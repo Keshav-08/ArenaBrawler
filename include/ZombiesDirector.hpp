@@ -16,11 +16,22 @@
 class ZombiesDirector {
 public:
     void StartRound(); // (re)starts at round 1 — call from ZombiesMode::Enter()
-    void Update(float dt, const MapGraph& map, std::vector<std::unique_ptr<Enemy>>& zombies);
+    void Update(float dt, MapGraph& map, std::vector<std::unique_ptr<Enemy>>& zombies);
 
     int Round() const { return round_; }
     bool InDowntime() const { return downtime_; }
     float DowntimeRemaining() const { return downtimeTimer_; }
+
+    // Request-outbox pattern (mirrors Enemy::ConsumeAoeRequest): true (once)
+    // the frame a zombie first breaches a previously-boarded window, with
+    // `outPosition` set to where it happened, so ZombiesMode can spawn a
+    // splinter burst + SFX there without SpawnOne reaching into rendering.
+    bool ConsumeFreshBreach(Vector2& outPosition);
+
+    // Same one-shot pattern: true for the single frame a round was just
+    // fully cleared (downtime just started), so ZombiesMode can play a
+    // fanfare and show a points-earned-this-round recap.
+    bool ConsumeRoundCleared();
 
     // Health(R) = 100 + (R-1)*50 for R<=9; compounds *1.1 per round above 9.
     static float HealthForRound(int round);
@@ -28,13 +39,17 @@ public:
 private:
     static int ZombieCountForRound(int round);
     static EnemyType PickTypeForRound(int round);
-    void SpawnOne(const MapGraph& map, std::vector<std::unique_ptr<Enemy>>& zombies);
+    void SpawnOne(MapGraph& map, std::vector<std::unique_ptr<Enemy>>& zombies);
 
     int round_ = 0;
     int zombiesToSpawn_ = 0;
     float spawnTimer_ = 0.0f;
     bool downtime_ = false;
     float downtimeTimer_ = 0.0f;
+
+    bool freshBreach_ = false;
+    Vector2 freshBreachPos_{};
+    bool roundCleared_ = false;
 
     static constexpr float kSpawnInterval = 1.2f;
     static constexpr int kMaxConcurrentAlive = 12;

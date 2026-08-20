@@ -39,8 +39,8 @@ void MysteryBox::Update(float dt) {
     }
 }
 
-bool MysteryBox::TryActivate(Vector2 playerPos, Economy& economy) {
-    if (state_ != State::Idle || !InRange(playerPos)) return false;
+bool MysteryBox::TryActivate(Vector2 playerPos, Economy& economy, bool powered) {
+    if (state_ != State::Idle || !InRange(playerPos) || !powered) return false;
     if (!economy.Spend(kCost)) return false;
     state_ = State::Cycling;
     timer_ = kCycleDuration;
@@ -55,13 +55,50 @@ bool MysteryBox::TryTakeWeapon(Vector2 playerPos, ZombieWeaponKind& outWeapon) {
     return true;
 }
 
-std::string MysteryBox::PromptText(Vector2 playerPos) const {
+std::string MysteryBox::PromptText(Vector2 playerPos, bool powered) const {
     if (!InRange(playerPos)) return "";
     switch (state_) {
-        case State::Idle: return "[E] Activate The Blender - Cost: " + std::to_string(kCost);
+        case State::Idle:
+            if (!powered) return "The Blender is dark - Requires Power";
+            return "[E] Activate The Blender - Cost: " + std::to_string(kCost);
         case State::Ready: return "[E] Take " + std::string(GetZombieWeaponStats(resultWeapon_).name);
         default: return "The Blender is cycling...";
     }
+}
+
+std::string PowerSwitch::PromptText() const {
+    if (activated) return "";
+    return "[E] Restore Power - Cost: " + std::to_string(cost);
+}
+
+bool PowerSwitch::TryActivate(Economy& economy) {
+    if (activated) return false;
+    if (!economy.Spend(cost)) return false;
+    activated = true;
+    return true;
+}
+
+const char* PerkName(PerkKind kind) {
+    switch (kind) {
+        case PerkKind::Juggernog: return "Jalapeno Juggernog";
+        case PerkKind::SpeedyReload: return "Speedy Sauce";
+        case PerkKind::DoubleDamage: return "Double Scoop";
+        case PerkKind::IronStomach: return "Iron Stomach";
+        default: return "";
+    }
+}
+
+std::string PerkMachine::PromptText(bool powered) const {
+    if (purchased) return std::string(PerkName(kind)) + " (owned)";
+    if (!powered) return std::string("[E] ") + PerkName(kind) + " - Requires Power";
+    return "[E] Buy " + std::string(PerkName(kind)) + " - Cost: " + std::to_string(cost);
+}
+
+bool PerkMachine::TryPurchase(Economy& economy, bool powered) {
+    if (purchased || !powered) return false;
+    if (!economy.Spend(cost)) return false;
+    purchased = true;
+    return true;
 }
 
 void MysteryBox::Draw() const {

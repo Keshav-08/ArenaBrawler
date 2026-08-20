@@ -48,6 +48,11 @@ public:
     // entering phase 2) fired. Game folds it into its hit-stop timer.
     float ConsumeHitStopRequest();
 
+    // Lets external callers (e.g. a melee Weapon's kill branch) request a
+    // freeze too, same "don't downgrade an active bigger stop" guard
+    // ScreenShake::Trigger uses.
+    void RequestHitStop(float duration) { pendingHitStop_ = std::max(pendingHitStop_, duration); }
+
     // Play-area rect (inset by wall margin) that Player/Enemy/Projectile
     // clamp movement to; already open across any cleared boundary.
     Rectangle CurrentRoomPlayArea() const;

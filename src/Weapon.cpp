@@ -5,8 +5,8 @@
 // CelerySword
 // ===========================================================================
 CelerySword::CelerySword(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                          ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
-    : Weapon("Celery Sword", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+                          ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText)
+    : Weapon("Celery Sword", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score, floatingText) {}
 
 void CelerySword::Update(float dt) {
     if (cooldownTimer_ > 0.0f) cooldownTimer_ -= dt;
@@ -41,6 +41,7 @@ void CelerySword::Attack(Vector2 origin, Vector2 dir) {
         dmg = ApplyDamageBuffs(*e, dmg, /*isMelee=*/true);
 
         bool killed = e->TakeDamage(dmg);
+        floatingText_.Spawn(e->position, TextFormat("%.0f", dmg), killed ? GOLD : RAYWHITE);
         e->MarkForBonus(cfg::kMarkedDuration);
         Vector2 pushDir = Vector2Scale(toEnemy, 1.0f / dist);
         e->velocity = Vector2Add(e->velocity, Vector2Scale(pushDir, cfg::kSwordKnockback));
@@ -50,6 +51,7 @@ void CelerySword::Attack(Vector2 origin, Vector2 dir) {
         if (killed) {
             particles_.SpawnBurst(e->position, 16, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f, 3.0f, 6.0f);
             OnKill(*e, 25);
+            levels_.RequestHitStop(cfg::kHitStopMedium);
         }
     }
 
@@ -85,8 +87,8 @@ void CelerySword::DrawUI(Vector2 screenPos) const {
 // ChurroBlaster
 // ===========================================================================
 ChurroBlaster::ChurroBlaster(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                              ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
-    : Weapon("Churro Blaster", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+                              ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText)
+    : Weapon("Churro Blaster", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score, floatingText) {}
 
 void ChurroBlaster::Update(float dt) {
     if (cooldownTimer_ > 0.0f) cooldownTimer_ -= dt;
@@ -157,8 +159,8 @@ void ChurroBlaster::DrawUI(Vector2 screenPos) const {
 // BurritoBomb
 // ===========================================================================
 BurritoBomb::BurritoBomb(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                          ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
-    : Weapon("Burrito Bomb", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+                          ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText)
+    : Weapon("Burrito Bomb", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score, floatingText) {}
 
 void BurritoBomb::Update(float dt) {
     if (cooldownTimer_ > 0.0f) cooldownTimer_ -= dt;
@@ -177,6 +179,7 @@ void BurritoBomb::Update(float dt) {
             float falloff = 1.0f - mathutil::Clamp01(dist / ex.radius);
             float dmg = ApplyDamageBuffs(*e, ex.damage * falloff, /*isMelee=*/false);
             bool killed = e->TakeDamage(dmg);
+            floatingText_.Spawn(e->position, TextFormat("%.0f", dmg), killed ? GOLD : RAYWHITE);
             e->velocity = Vector2Add(e->velocity, mathutil::RadialImpulse(e->position, ex.position, cfg::kBombImpulseStrength, dt));
             if (killed) {
                 particles_.SpawnBurst(e->position, 14, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f);
@@ -218,8 +221,8 @@ void BurritoBomb::DrawUI(Vector2 screenPos) const {
 // NachoShield
 // ===========================================================================
 NachoShield::NachoShield(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                          ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
-    : Weapon("Nacho Shield", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+                          ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText)
+    : Weapon("Nacho Shield", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score, floatingText) {}
 
 void NachoShield::Update(float dt) {
     bool wasBlocking = blocking_;
@@ -271,6 +274,7 @@ void NachoShield::Attack(Vector2 origin, Vector2 dir) {
         dmg = ApplyDamageBuffs(*e, dmg, /*isMelee=*/true);
 
         bool killed = e->TakeDamage(dmg);
+        floatingText_.Spawn(e->position, TextFormat("%.0f", dmg), killed ? GOLD : RAYWHITE);
         Vector2 pushDir = Vector2Scale(toEnemy, 1.0f / dist);
         e->velocity = Vector2Add(e->velocity, Vector2Scale(pushDir, cfg::kShieldBashKnockback));
         particles_.SpawnBurst(e->position, 8, Color{230, 200, 90, 255}, 100.0f, 300.0f, 0.15f, 0.3f);
@@ -278,6 +282,7 @@ void NachoShield::Attack(Vector2 origin, Vector2 dir) {
         if (killed) {
             particles_.SpawnBurst(e->position, 14, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f);
             OnKill(*e, 20);
+            levels_.RequestHitStop(cfg::kHitStopMedium);
         }
     }
 
@@ -313,8 +318,8 @@ void NachoShield::DrawUI(Vector2 screenPos) const {
 // SkewerSpear
 // ===========================================================================
 SkewerSpear::SkewerSpear(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                          ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
-    : Weapon("Skewer Spear", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+                          ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText)
+    : Weapon("Skewer Spear", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score, floatingText) {}
 
 void SkewerSpear::Update(float dt) {
     if (cooldownTimer_ > 0.0f) cooldownTimer_ -= dt;
@@ -349,6 +354,7 @@ void SkewerSpear::Attack(Vector2 origin, Vector2 dir) {
         dmg = ApplyDamageBuffs(*e, dmg, /*isMelee=*/true);
 
         bool killed = e->TakeDamage(dmg);
+        floatingText_.Spawn(e->position, TextFormat("%.0f", dmg), killed ? GOLD : RAYWHITE);
         e->MarkForBonus(cfg::kMarkedDuration);
         Vector2 pushDir = Vector2Scale(toEnemy, 1.0f / dist);
         e->velocity = Vector2Add(e->velocity, Vector2Scale(pushDir, cfg::kSpearKnockback));
@@ -358,6 +364,7 @@ void SkewerSpear::Attack(Vector2 origin, Vector2 dir) {
         if (killed) {
             particles_.SpawnBurst(e->position, 16, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f, 3.0f, 6.0f);
             OnKill(*e, 28);
+            levels_.RequestHitStop(cfg::kHitStopMedium);
         }
     }
 
@@ -391,8 +398,8 @@ void SkewerSpear::DrawUI(Vector2 screenPos) const {
 // SalsaScattershot
 // ===========================================================================
 SalsaScattershot::SalsaScattershot(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                                    ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
-    : Weapon("Salsa Scattershot", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+                                    ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText)
+    : Weapon("Salsa Scattershot", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score, floatingText) {}
 
 void SalsaScattershot::Update(float dt) {
     if (cooldownTimer_ > 0.0f) cooldownTimer_ -= dt;
@@ -464,8 +471,8 @@ void SalsaScattershot::DrawUI(Vector2 screenPos) const {
 // HabaneroHandful
 // ===========================================================================
 HabaneroHandful::HabaneroHandful(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                                  ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
-    : Weapon("Habanero Handful", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+                                  ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText)
+    : Weapon("Habanero Handful", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score, floatingText) {}
 
 void HabaneroHandful::Update(float dt) {
     // Explosions are resolved by BurritoBomb::Update (unconditionally
@@ -505,8 +512,8 @@ void HabaneroHandful::DrawUI(Vector2 screenPos) const {
 // FondueFork
 // ===========================================================================
 FondueFork::FondueFork(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                        ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
-    : Weapon("Fondue Fork", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+                        ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText)
+    : Weapon("Fondue Fork", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score, floatingText) {}
 
 void FondueFork::Update(float dt) {
     // Rising edge only: holding RMB doesn't sustain a block like Shield does
@@ -556,6 +563,7 @@ void FondueFork::Attack(Vector2 origin, Vector2 dir) {
         hitAnything = true;
         float dmg = ApplyDamageBuffs(*e, cfg::kForkBashDamage, /*isMelee=*/true);
         bool killed = e->TakeDamage(dmg);
+        floatingText_.Spawn(e->position, TextFormat("%.0f", dmg), killed ? GOLD : RAYWHITE);
         Vector2 pushDir = Vector2Scale(toEnemy, 1.0f / dist);
         e->velocity = Vector2Add(e->velocity, Vector2Scale(pushDir, cfg::kForkBashKnockback));
         particles_.SpawnBurst(e->position, 8, Color{90, 210, 190, 255}, 100.0f, 300.0f, 0.15f, 0.3f);
@@ -563,6 +571,7 @@ void FondueFork::Attack(Vector2 origin, Vector2 dir) {
         if (killed) {
             particles_.SpawnBurst(e->position, 14, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f);
             OnKill(*e, 20);
+            levels_.RequestHitStop(cfg::kHitStopMedium);
         }
     }
 

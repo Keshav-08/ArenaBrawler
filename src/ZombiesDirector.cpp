@@ -35,15 +35,34 @@ EnemyType ZombiesDirector::PickTypeForRound(int round) {
     return pool[static_cast<size_t>(GetRandomValue(0, static_cast<int>(pool.size()) - 1))];
 }
 
-void ZombiesDirector::SpawnOne(const MapGraph& map, std::vector<std::unique_ptr<Enemy>>& zombies) {
-    std::vector<const Zone*> activeZones;
-    for (const Zone& z : map.Zones()) {
+bool ZombiesDirector::ConsumeFreshBreach(Vector2& outPosition) {
+    if (!freshBreach_) return false;
+    outPosition = freshBreachPos_;
+    freshBreach_ = false;
+    return true;
+}
+
+bool ZombiesDirector::ConsumeRoundCleared() {
+    if (!roundCleared_) return false;
+    roundCleared_ = false;
+    return true;
+}
+
+void ZombiesDirector::SpawnOne(MapGraph& map, std::vector<std::unique_ptr<Enemy>>& zombies) {
+    std::vector<Zone*> activeZones;
+    for (Zone& z : map.Zones()) {
         if (z.active && !z.spawnPoints.empty()) activeZones.push_back(&z);
     }
     if (activeZones.empty()) return;
 
-    const Zone* zone = activeZones[static_cast<size_t>(GetRandomValue(0, static_cast<int>(activeZones.size()) - 1))];
-    Vector2 pos = zone->spawnPoints[static_cast<size_t>(GetRandomValue(0, static_cast<int>(zone->spawnPoints.size()) - 1))];
+    Zone* zone = activeZones[static_cast<size_t>(GetRandomValue(0, static_cast<int>(activeZones.size()) - 1))];
+    SpawnWindow& window = zone->spawnPoints[static_cast<size_t>(GetRandomValue(0, static_cast<int>(zone->spawnPoints.size()) - 1))];
+    Vector2 pos = window.position;
+    if (!window.breached) {
+        window.breached = true;
+        freshBreach_ = true;
+        freshBreachPos_ = pos;
+    }
 
     // Rare heavy special: BossBurrower's dive/emerge pattern reused as a
     // mini-boss (health scaled down from full arena-boss tier), capped at
@@ -81,7 +100,7 @@ void ZombiesDirector::SpawnOne(const MapGraph& map, std::vector<std::unique_ptr<
     }
 }
 
-void ZombiesDirector::Update(float dt, const MapGraph& map, std::vector<std::unique_ptr<Enemy>>& zombies) {
+void ZombiesDirector::Update(float dt, MapGraph& map, std::vector<std::unique_ptr<Enemy>>& zombies) {
     int aliveCount = 0;
     for (const auto& z : zombies) {
         if (z->IsAlive()) aliveCount++;
@@ -101,6 +120,7 @@ void ZombiesDirector::Update(float dt, const MapGraph& map, std::vector<std::uni
     if (zombiesToSpawn_ <= 0 && aliveCount == 0) {
         downtime_ = true;
         downtimeTimer_ = kDowntimeDuration;
+        roundCleared_ = true;
         return;
     }
 

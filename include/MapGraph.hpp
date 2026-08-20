@@ -6,6 +6,15 @@
 #include <string>
 #include <vector>
 
+// A boarded-up spawn point: zombies breach through it instead of appearing
+// out of nowhere. `breached` flips permanently true the first time
+// ZombiesDirector::SpawnOne uses it (no re-boarding), so it reads as a
+// broken-open window for the rest of the run.
+struct SpawnWindow {
+    Vector2 position{};
+    bool breached = false;
+};
+
 // A connected zone in the Zombies Mode map. `spawnPoints` (world-space)
 // only produce zombies once `active` — flipped true when the barrier
 // leading into this zone is cleared (see MapGraph::TryClearBarrier).
@@ -16,7 +25,7 @@
 struct Zone {
     std::string name;
     Rectangle bounds{};
-    std::vector<Vector2> spawnPoints;
+    std::vector<SpawnWindow> spawnPoints;
     std::vector<Obstacle> obstacles;
     bool active = false;
 };

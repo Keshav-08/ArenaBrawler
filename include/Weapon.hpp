@@ -2,6 +2,7 @@
 
 #include "Audio.hpp"
 #include "Common.hpp"
+#include "FloatingText.hpp"
 #include "LevelManager.hpp"
 #include "ParticleSystem.hpp"
 #include "Pickup.hpp"
@@ -19,10 +20,12 @@ class Weapon {
 public:
     Weapon(std::string name, ProjectileManager& projectiles, LevelManager& levels,
            ParticleSystem& particles, ScreenShake& shake, Player& player, ComboTracker& combo,
-           PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
+           PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score,
+           FloatingTextPool& floatingText)
         : name_(std::move(name)), projectiles_(projectiles), levels_(levels),
           particles_(particles), shake_(shake), player_(player), combo_(combo),
-          pickups_(pickups), powerUps_(powerUps), audio_(audio), score_(score) {}
+          pickups_(pickups), powerUps_(powerUps), audio_(audio), score_(score),
+          floatingText_(floatingText) {}
 
     virtual ~Weapon() = default;
 
@@ -81,13 +84,14 @@ protected:
     PowerUpState& powerUps_;
     AudioManager& audio_;
     int& score_;
+    FloatingTextPool& floatingText_;
 };
 
 // --- Celery Sword: melee swing, swept circular-arc hit detection ----------
 class CelerySword : public Weapon {
 public:
     CelerySword(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+                ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText);
 
     void Update(float dt) override;
     void Attack(Vector2 origin, Vector2 dir) override;
@@ -106,7 +110,7 @@ private:
 class ChurroBlaster : public Weapon {
 public:
     ChurroBlaster(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                  ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+                  ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText);
 
     void Update(float dt) override;
     void Attack(Vector2 origin, Vector2 dir) override;
@@ -127,7 +131,7 @@ private:
 class BurritoBomb : public Weapon {
 public:
     BurritoBomb(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+                ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText);
 
     // Ticks the throw cooldown AND resolves any bomb detonations that
     // occurred this frame (radial damage + inverse-square impulse), so this
@@ -147,7 +151,7 @@ private:
 class NachoShield : public Weapon {
 public:
     NachoShield(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+                ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText);
 
     void Update(float dt) override;
     void Attack(Vector2 origin, Vector2 dir) override; // shield bash
@@ -173,7 +177,7 @@ private:
 class SkewerSpear : public Weapon {
 public:
     SkewerSpear(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+                ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText);
 
     void Update(float dt) override;
     void Attack(Vector2 origin, Vector2 dir) override;
@@ -192,7 +196,7 @@ private:
 class SalsaScattershot : public Weapon {
 public:
     SalsaScattershot(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                      ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+                      ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText);
 
     void Update(float dt) override;
     void Attack(Vector2 origin, Vector2 dir) override;
@@ -217,7 +221,7 @@ private:
 class HabaneroHandful : public Weapon {
 public:
     HabaneroHandful(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-                     ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+                     ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText);
 
     void Update(float dt) override;
     void Attack(Vector2 origin, Vector2 dir) override;
@@ -234,7 +238,7 @@ private:
 class FondueFork : public Weapon {
 public:
     FondueFork(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
-               ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+               ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score, FloatingTextPool& floatingText);
 
     void Update(float dt) override;
     void Attack(Vector2 origin, Vector2 dir) override; // fork bash

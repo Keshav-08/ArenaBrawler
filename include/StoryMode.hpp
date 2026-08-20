@@ -2,6 +2,7 @@
 
 #include "Audio.hpp"
 #include "Common.hpp"
+#include "FloatingText.hpp"
 #include "GameMode.hpp"
 #include "LevelManager.hpp"
 #include "ParticleSystem.hpp"
@@ -45,10 +46,11 @@ private:
     ScreenShake shake_;
     ComboTracker combo_;
     PowerUpState powerUps_;
+    FloatingTextPool floatingText_;
 
     // Loadout: slot 0 (Celery Sword) is always owned; slot2Weapon_ is the
     // index into weapons_ of whichever ranged/utility weapon was most
-    // recently looted (-1 = nothing found yet). All 4 Weapon objects are
+    // recently looted (-1 = nothing found yet). All 8 Weapon objects are
     // still constructed upfront so their per-frame ticking (e.g. a thrown
     // bomb detonating after switching away) keeps working unchanged.
     std::vector<std::unique_ptr<Weapon>> weapons_;
@@ -61,6 +63,18 @@ private:
     bool debugMode_ = false;
     bool audioMuted_ = false;
     int score_ = 0;
+
+    // Combo streak pop: a brief scale-up-then-settle timer restarted on
+    // every ComboTracker::RegisterKill, so the on-screen STREAK text reads
+    // as escalating rather than a flat counter (see combo_ above).
+    float comboPopTimer_ = 0.0f;
+    int lastStreak_ = 0;
+
+    // Run payoff: runTime_ resets every RestartGame() like everything else;
+    // bestScore_ deliberately does NOT (see RestartGame's reset list) so it
+    // survives across R-to-restart for the life of the program.
+    float runTime_ = 0.0f;
+    int bestScore_ = 0;
 
     Difficulty difficulty_ = Difficulty::Normal;
     bool difficultyChosen_ = false;

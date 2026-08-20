@@ -80,6 +80,21 @@ void DrawZone(const Zone& zone, int zoneIndex) {
         fx::DrawObstacle(obs, center);
     }
 
+    for (const SpawnWindow& window : zone.spawnPoints) {
+        Rectangle frame{window.position.x - 22.0f, window.position.y - 16.0f, 44.0f, 32.0f};
+        if (window.breached) {
+            DrawRectangleRec(frame, Fade(BLACK, 0.55f));
+            DrawRectangleLinesEx(frame, 2.0f, Fade(palette.border, 0.5f));
+        } else {
+            DrawRectangleRec(frame, Color{92, 68, 44, 255});
+            DrawRectangleLinesEx(frame, 2.0f, Color{50, 36, 22, 255});
+            for (int plank = 0; plank < 3; ++plank) {
+                float py = frame.y + frame.height * (static_cast<float>(plank) + 0.5f) / 3.0f;
+                DrawLineEx(Vector2{frame.x + 2.0f, py}, Vector2{frame.x + frame.width - 2.0f, py}, 3.0f, Color{60, 42, 26, 255});
+            }
+        }
+    }
+
     int w = MeasureText(zone.name.c_str(), 24);
     DrawText(zone.name.c_str(), static_cast<int>(zone.bounds.x + zone.bounds.width * 0.5f) - w / 2,
               static_cast<int>(zone.bounds.y + 20.0f), 24, Fade(WHITE, 0.5f));
@@ -123,10 +138,68 @@ void DrawWallBuy(const WallBuy& wb, ZombieWeaponKind equipped) {
              wb.weapon == equipped ? GOLD : WHITE);
 }
 
+void DrawPowerSwitch(const PowerSwitch& ps) {
+    Color c = ps.activated ? Color{255, 230, 140, 255} : Color{90, 90, 100, 255};
+    Rectangle box{ps.position.x - 14.0f, ps.position.y - 20.0f, 28.0f, 40.0f};
+    DrawRectangleRec(box, Fade(c, 0.6f));
+    DrawRectangleLinesEx(box, 3.0f, c);
+    if (ps.activated) {
+        float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 5.0f);
+        DrawCircleLines(static_cast<int>(ps.position.x), static_cast<int>(ps.position.y), 24.0f + pulse * 4.0f, Fade(c, 0.6f));
+    }
+    const char* label = "POWER";
+    int w = MeasureText(label, 12);
+    DrawText(label, static_cast<int>(ps.position.x) - w / 2, static_cast<int>(ps.position.y) - 36, 12, c);
+}
+
+Color PerkColorFor(PerkKind kind) {
+    switch (kind) {
+        case PerkKind::Juggernog: return Color{220, 70, 60, 255};
+        case PerkKind::SpeedyReload: return Color{230, 200, 70, 255};
+        case PerkKind::DoubleDamage: return Color{90, 180, 255, 255};
+        case PerkKind::IronStomach: return Color{150, 150, 160, 255};
+        default: return WHITE;
+    }
+}
+
+void DrawPerkMachine(const PerkMachine& perk, bool powered) {
+    Color c = PerkColorFor(perk.kind);
+    if (perk.purchased) c = Fade(c, 0.9f);
+    else if (!powered) c = Fade(GRAY, 0.7f);
+    Rectangle box{perk.position.x - 18.0f, perk.position.y - 24.0f, 36.0f, 48.0f};
+    DrawRectangleRec(box, Fade(c, 0.5f));
+    DrawRectangleLinesEx(box, 3.0f, c);
+    const char* name = PerkName(perk.kind);
+    int w = MeasureText(name, 12);
+    DrawText(name, static_cast<int>(perk.position.x) - w / 2, static_cast<int>(perk.position.y) - 40, 12,
+             perk.purchased ? GOLD : WHITE);
+    if (perk.purchased) {
+        const char* owned = "OWNED";
+        int ow = MeasureText(owned, 10);
+        DrawText(owned, static_cast<int>(perk.position.x) - ow / 2, static_cast<int>(perk.position.y) + 28, 10, GOLD);
+    }
+}
+
 void DrawHealthBar(Vector2 pos, float width, float height, float frac, Color fg) {
     DrawRectangle(static_cast<int>(pos.x), static_cast<int>(pos.y), static_cast<int>(width), static_cast<int>(height), Fade(DARKGRAY, 0.6f));
     DrawRectangle(static_cast<int>(pos.x), static_cast<int>(pos.y), static_cast<int>(width * mathutil::Clamp01(frac)), static_cast<int>(height), fg);
     DrawRectangleLines(static_cast<int>(pos.x), static_cast<int>(pos.y), static_cast<int>(width), static_cast<int>(height), RAYWHITE);
+}
+
+// Same technique as StoryMode's DrawLowHealthVignette: soft red edge glow
+// that intensifies and slowly pulses below ~30% HP.
+void DrawLowHealthVignette(float healthFrac) {
+    constexpr float kThreshold = 0.3f;
+    if (healthFrac >= kThreshold) return;
+    float severity = 1.0f - (healthFrac / kThreshold);
+    float pulse = 0.6f + 0.4f * std::sin(static_cast<float>(GetTime()) * 4.0f);
+    float alpha = severity * (0.35f + 0.25f * pulse);
+    float edge = 60.0f + severity * 60.0f;
+    Color c = ColorAlpha(RED, alpha);
+    DrawRectangleGradientV(0, 0, cfg::kScreenWidth, static_cast<int>(edge), c, Fade(c, 0.0f));
+    DrawRectangleGradientV(0, cfg::kScreenHeight - static_cast<int>(edge), cfg::kScreenWidth, static_cast<int>(edge), Fade(c, 0.0f), c);
+    DrawRectangleGradientH(0, 0, static_cast<int>(edge), cfg::kScreenHeight, c, Fade(c, 0.0f));
+    DrawRectangleGradientH(cfg::kScreenWidth - static_cast<int>(edge), 0, static_cast<int>(edge), cfg::kScreenHeight, Fade(c, 0.0f), c);
 }
 
 }  // namespace
@@ -158,6 +231,14 @@ void ZombiesMode::Enter() {
     reloadTimer_ = 0.0f;
     timeSinceLastHit_ = 0.0f;
     state_ = RunState::Playing;
+    reloadSpeedMult_ = 1.0f;
+    perkDamageMult_ = 1.0f;
+    hitStopTimer_ = 0.0f;
+    runTime_ = 0.0f;
+    pointsAtRoundStart_ = 0;
+    pointsEarnedLastRound_ = 0;
+    // bestRound_ is deliberately NOT reset here — it survives across
+    // restarts for the life of the program (see ZombiesMode.hpp).
 
     wallBuys_.clear();
     const Zone& cafeteria = map_.Zones()[0];
@@ -175,6 +256,17 @@ void ZombiesMode::Enter() {
 
     mysteryBox_ = MysteryBox();
     mysteryBox_.position = Vector2{freezer.bounds.x + freezer.bounds.width * 0.5f, freezer.bounds.y + freezer.bounds.height * 0.5f};
+
+    powerSwitch_ = PowerSwitch{};
+    powerSwitch_.position = Vector2{cafeteria.bounds.x + 90.0f, cafeteria.bounds.y + cafeteria.bounds.height - 90.0f};
+    powerSwitch_.cost = 750;
+
+    // One perk per zone, mirroring the one-wall-buy-per-zone convention.
+    perkMachines_.clear();
+    perkMachines_.push_back(PerkMachine{Vector2{cafeteria.bounds.x + cafeteria.bounds.width * 0.5f, cafeteria.bounds.y + cafeteria.bounds.height - 70.0f}, PerkKind::Juggernog, 2000});
+    perkMachines_.push_back(PerkMachine{Vector2{storage.bounds.x + storage.bounds.width * 0.5f, storage.bounds.y + storage.bounds.height - 70.0f}, PerkKind::SpeedyReload, 2000});
+    perkMachines_.push_back(PerkMachine{Vector2{kitchen.bounds.x + kitchen.bounds.width * 0.5f, kitchen.bounds.y + kitchen.bounds.height - 70.0f}, PerkKind::DoubleDamage, 2500});
+    perkMachines_.push_back(PerkMachine{Vector2{freezer.bounds.x + freezer.bounds.width * 0.5f, freezer.bounds.y + 70.0f}, PerkKind::IronStomach, 2000});
 }
 
 Camera2D ZombiesMode::BuildCamera() const {
@@ -203,8 +295,17 @@ void ZombiesMode::HandleInteract() {
     Barrier* barrier = map_.NearbyUnclearedBarrier(player_.position, kStationInteractRange);
     if (barrier) {
         if (map_.TryClearBarrier(*barrier, economy_)) {
-            audio_.Play(Sfx::GateUnlock);
+            audio_.Play(Sfx::GateUnlock, 1.0f, 0.15f);
             shake_.Trigger(0.3f, 8.0f);
+        }
+        return;
+    }
+
+    if (!powerSwitch_.activated && powerSwitch_.InRange(player_.position)) {
+        if (powerSwitch_.TryActivate(economy_)) {
+            audio_.Play(Sfx::GateUnlock, 1.0f, 0.3f);
+            shake_.Trigger(0.25f, 7.0f);
+            particles_.SpawnBurst(powerSwitch_.position, 20, Color{255, 230, 140, 255}, 90.0f, 260.0f, 0.25f, 0.5f);
         }
         return;
     }
@@ -217,11 +318,21 @@ void ZombiesMode::HandleInteract() {
             ammo_ = GetZombieWeaponStats(wb.weapon).magazineSize;
             burstActive_ = false;
             reloading_ = false;
-            audio_.Play(Sfx::PickupPowerUp);
+            audio_.Play(Sfx::PickupPowerUp, 1.0f, 0.15f);
         } else if (result == WallBuyResult::Refilled) {
             ammo_ = GetZombieWeaponStats(equippedWeapon_).magazineSize;
             reloading_ = false;
-            audio_.Play(Sfx::PickupHealth);
+            audio_.Play(Sfx::PickupHealth, 1.0f, 0.15f);
+        }
+        return;
+    }
+
+    for (PerkMachine& perk : perkMachines_) {
+        if (!perk.InRange(player_.position)) continue;
+        if (perk.TryPurchase(economy_, powerSwitch_.activated)) {
+            ApplyPerk(perk.kind);
+            audio_.Play(Sfx::PickupPowerUp, 1.0f, 0.1f);
+            particles_.SpawnBurst(perk.position, 20, Color{200, 90, 255, 255}, 90.0f, 260.0f, 0.25f, 0.5f);
         }
         return;
     }
@@ -235,10 +346,32 @@ void ZombiesMode::HandleInteract() {
             reloading_ = false;
             audio_.Play(Sfx::PickupPowerUp, 1.0f, -0.15f);
             particles_.SpawnBurst(mysteryBox_.position, 24, GOLD, 100.0f, 300.0f, 0.3f, 0.6f);
-        } else if (mysteryBox_.TryActivate(player_.position, economy_)) {
+        } else if (mysteryBox_.TryActivate(player_.position, economy_, powerSwitch_.activated)) {
             audio_.Play(Sfx::GateUnlock, 1.0f, 0.2f);
         }
     }
+}
+
+void ZombiesMode::ApplyPerk(PerkKind kind) {
+    switch (kind) {
+        case PerkKind::Juggernog:
+            player_.maxHealth += 50.0f;
+            player_.health += 50.0f;
+            break;
+        case PerkKind::SpeedyReload:
+            reloadSpeedMult_ *= 0.6f;
+            break;
+        case PerkKind::DoubleDamage:
+            perkDamageMult_ *= 1.5f;
+            break;
+        case PerkKind::IronStomach:
+            player_.EquipArmor(0.20f);
+            break;
+    }
+}
+
+void ZombiesMode::TriggerHitStop(float duration) {
+    if (duration > hitStopTimer_) hitStopTimer_ = duration;
 }
 
 void ZombiesMode::AwardKill(Enemy& zombie, int basePoints) {
@@ -274,12 +407,17 @@ void ZombiesMode::FireMelee(Vector2 origin, Vector2 aimDir, const ZombieWeaponSt
         if (std::fabs(mathutil::AngleDiff(swingAngle_, mathutil::AngleOf(toZ))) > halfArc) continue;
 
         hitAnything = true;
-        bool killed = z->TakeDamage(stats.damage);
+        float dmg = stats.damage * perkDamageMult_;
+        bool killed = z->TakeDamage(dmg);
+        floatingText_.Spawn(z->position, TextFormat("%.0f", dmg), killed ? GOLD : RAYWHITE);
         Vector2 pushDir = Vector2Scale(toZ, 1.0f / dist);
         z->velocity = Vector2Add(z->velocity, Vector2Scale(pushDir, 500.0f));
         economy_.AddPoints(10, z->position);
         particles_.SpawnBurst(z->position, 10, Color{240, 240, 240, 255}, 80.0f, 260.0f, 0.15f, 0.35f);
-        if (killed) AwardKill(*z, 130);
+        if (killed) {
+            AwardKill(*z, 130);
+            TriggerHitStop(cfg::kHitStopMedium);
+        }
     }
     if (hitAnything) shake_.Trigger(0.15f, 5.0f);
 }
@@ -290,7 +428,7 @@ void ZombiesMode::FireBulletShot(Vector2 origin, Vector2 aimDir, const ZombieWea
     Vector2 dir = mathutil::FromAngle(angle);
     Vector2 vel = Vector2Scale(dir, stats.bulletSpeed);
     Vector2 spawnPos = Vector2Add(origin, Vector2Scale(dir, cfg::kPlayerRadius + 4.0f));
-    projectiles_.SpawnBullet(spawnPos, vel, stats.damage, 4.0f, 1.5f, false, stats.slowDuration);
+    projectiles_.SpawnBullet(spawnPos, vel, stats.damage * perkDamageMult_, 4.0f, 1.5f, false, stats.slowDuration);
     particles_.SpawnMuzzleFlash(spawnPos, angle, Color{255, 200, 120, 255});
     audio_.Play(Sfx::BlasterShot, 0.5f, 0.15f);
     if (stats.magazineSize > 0) {
@@ -327,7 +465,7 @@ void ZombiesMode::UpdateBurst(float dt) {
 void ZombiesMode::StartReload(const ZombieWeaponStats& stats) {
     if (stats.magazineSize <= 0 || reloading_) return;
     reloading_ = true;
-    reloadTimer_ = ReloadTimeFor(stats.fireMode);
+    reloadTimer_ = ReloadTimeFor(stats.fireMode) * reloadSpeedMult_;
 }
 
 void ZombiesMode::UpdateReload(float dt) {
@@ -347,7 +485,7 @@ void ZombiesMode::FireShotgun(Vector2 origin, Vector2 aimDir, const ZombieWeapon
         Vector2 dir = mathutil::FromAngle(angle);
         Vector2 vel = Vector2Scale(dir, stats.bulletSpeed);
         Vector2 spawnPos = Vector2Add(origin, Vector2Scale(dir, cfg::kPlayerRadius + 4.0f));
-        projectiles_.SpawnBullet(spawnPos, vel, stats.damage, 4.0f, 0.4f);
+        projectiles_.SpawnBullet(spawnPos, vel, stats.damage * perkDamageMult_, 4.0f, 0.4f);
     }
     particles_.SpawnMuzzleFlash(origin, baseAngle, Color{255, 200, 120, 255});
     audio_.Play(Sfx::BlasterShot, 0.7f, -0.1f);
@@ -360,7 +498,7 @@ void ZombiesMode::FireShotgun(Vector2 origin, Vector2 aimDir, const ZombieWeapon
 void ZombiesMode::FireExplosive(Vector2 origin, Vector2 aimDir, const ZombieWeaponStats& stats) {
     weaponCooldownTimer_ = stats.cooldown;
     Vector2 vel = Vector2Scale(aimDir, stats.bulletSpeed);
-    projectiles_.SpawnBomb(origin, vel, stats.damage, stats.blastRadius, 1.2f);
+    projectiles_.SpawnBomb(origin, vel, stats.damage * perkDamageMult_, stats.blastRadius, 1.2f);
     if (stats.magazineSize > 0) {
         ammo_--;
         if (ammo_ <= 0) StartReload(stats);
@@ -377,7 +515,7 @@ void ZombiesMode::FireContinuousCone(Vector2 origin, Vector2 aimDir, const Zombi
         if (dist > stats.range + z->radius || dist < 0.0001f) continue;
         if (std::fabs(mathutil::AngleDiff(aimAngle, mathutil::AngleOf(toZ))) > halfArc) continue;
 
-        bool killed = z->TakeDamage(stats.damage * dt);
+        bool killed = z->TakeDamage(stats.damage * perkDamageMult_ * dt);
         economy_.AddPoints(10, z->position);
         if (killed) AwardKill(*z, 130);
     }
@@ -397,7 +535,7 @@ void ZombiesMode::FireLaser(Vector2 origin, Vector2 aimDir, const ZombieWeaponSt
         Vector2 closest = Vector2Add(origin, Vector2Scale(seg, t));
         if (Vector2Distance(z->position, closest) > z->radius + kLaserBeamWidth) continue;
 
-        bool killed = z->TakeDamage(stats.damage * dt);
+        bool killed = z->TakeDamage(stats.damage * perkDamageMult_ * dt);
         economy_.AddPoints(10, z->position);
         if (killed) AwardKill(*z, 100);
     }
@@ -424,9 +562,10 @@ void ZombiesMode::FireChain(Vector2 origin, Vector2 aimDir, const ZombieWeaponSt
     audio_.Play(Sfx::BlasterShot, 0.6f, -0.15f);
     std::vector<Enemy*> hit;
     Enemy* current = target;
-    float dmg = stats.damage;
+    float dmg = stats.damage * perkDamageMult_;
     for (int jump = 0; jump < stats.chainCount && current != nullptr; ++jump) {
         bool killed = current->TakeDamage(dmg);
+        floatingText_.Spawn(current->position, TextFormat("%.0f", dmg), killed ? GOLD : RAYWHITE);
         economy_.AddPoints(10, current->position);
         particles_.SpawnBurst(current->position, 8, Color{160, 220, 255, 255}, 80.0f, 220.0f, 0.15f, 0.3f);
         if (killed) AwardKill(*current, 100);
@@ -493,11 +632,14 @@ void ZombiesMode::ResolveExplosion(const Explosion& ex, float dt) {
         float dist = Vector2Length(diff);
         if (dist > ex.radius) continue;
         float falloff = 1.0f - mathutil::Clamp01(dist / ex.radius);
-        bool killed = z->TakeDamage(ex.damage * falloff);
+        float dmg = ex.damage * falloff;
+        bool killed = z->TakeDamage(dmg);
+        floatingText_.Spawn(z->position, TextFormat("%.0f", dmg), killed ? GOLD : RAYWHITE);
         z->velocity = Vector2Add(z->velocity, mathutil::RadialImpulse(z->position, ex.position, kExplosionImpulse, dt));
         economy_.AddPoints(10, z->position);
         if (killed) AwardKill(*z, 100);
     }
+    TriggerHitStop(cfg::kHitStopHeavy);
 
     Vector2 diff = Vector2Subtract(player_.position, ex.position);
     float dist = Vector2Length(diff);
@@ -518,6 +660,7 @@ void ZombiesMode::ResolveBulletHits() {
             if (dist > p.radius + z->radius) continue;
 
             bool killed = z->TakeDamage(p.damage);
+            floatingText_.Spawn(z->position, TextFormat("%.0f", p.damage), killed ? GOLD : RAYWHITE);
             if (p.slowDuration > 0.0f) z->ApplySlow(p.slowDuration);
             Vector2 diff = Vector2Subtract(z->position, p.position);
             if (Vector2LengthSqr(diff) > 0.0001f) {
@@ -579,7 +722,8 @@ void ZombiesMode::UpdateZombies(float dt, Rectangle playArea, const Zone& zone) 
         if (z->ConsumeAoeRequest(aoe)) {
             particles_.SpawnBurst(aoe.origin, 40, Color{255, 140, 60, 255}, 120.0f, 480.0f, 0.3f, 0.7f, 3.0f, 7.0f);
             shake_.Trigger(0.4f, 14.0f);
-            audio_.Play(Sfx::BossSlam);
+            TriggerHitStop(cfg::kHitStopHeavy);
+            audio_.Play(Sfx::BossSlam, 1.0f, 0.1f);
             float pdist = Vector2Distance(player_.position, aoe.origin);
             if (pdist < aoe.radius) {
                 float falloff = 1.0f - mathutil::Clamp01(pdist / aoe.radius);
@@ -611,11 +755,17 @@ std::string ZombiesMode::CurrentPrompt() const {
     const Barrier* barrier = map_.NearbyUnclearedBarrier(player_.position, kStationInteractRange);
     if (barrier) return barrier->PromptText();
 
+    if (!powerSwitch_.activated && powerSwitch_.InRange(player_.position)) return powerSwitch_.PromptText();
+
     for (const WallBuy& wb : wallBuys_) {
         if (wb.InRange(player_.position)) return wb.PromptText(equippedWeapon_);
     }
 
-    return mysteryBox_.PromptText(player_.position);
+    for (const PerkMachine& perk : perkMachines_) {
+        if (perk.InRange(player_.position)) return perk.PromptText(powerSwitch_.activated);
+    }
+
+    return mysteryBox_.PromptText(player_.position, powerSwitch_.activated);
 }
 
 void ZombiesMode::Update(float dt) {
@@ -626,6 +776,12 @@ void ZombiesMode::Update(float dt) {
         return;
     }
 
+    if (hitStopTimer_ > 0.0f) {
+        hitStopTimer_ -= dt;
+        return;
+    }
+
+    runTime_ += dt;
     timeSinceLastHit_ += dt;
     if (timeSinceLastHit_ > kRegenDelay) {
         player_.Heal(kRegenRate * dt);
@@ -663,14 +819,26 @@ void ZombiesMode::Update(float dt) {
 
     UpdateZombies(dt, playArea, currentZone);
     director_.Update(dt, map_, zombies_);
+    Vector2 breachPos;
+    if (director_.ConsumeFreshBreach(breachPos)) {
+        particles_.SpawnBurst(breachPos, 16, Color{140, 100, 60, 255}, 90.0f, 260.0f, 0.2f, 0.45f, 3.0f, 6.0f);
+        audio_.Play(Sfx::HitLanded, 0.8f, -0.2f);
+    }
+    if (director_.ConsumeRoundCleared()) {
+        pointsEarnedLastRound_ = economy_.Points() - pointsAtRoundStart_;
+        pointsAtRoundStart_ = economy_.Points();
+        audio_.Play(Sfx::LevelComplete);
+    }
     mysteryBox_.Update(dt);
 
     economy_.Update(dt);
     particles_.Update(dt);
     shake_.Update(dt);
+    floatingText_.Update(dt);
 
     if (!player_.IsAlive()) {
         state_ = RunState::GameOver;
+        if (director_.Round() > bestRound_) bestRound_ = director_.Round();
         audio_.Play(Sfx::GameOver);
     }
 }
@@ -685,6 +853,8 @@ void ZombiesMode::Draw() {
     DrawZone(map_.Zones()[static_cast<size_t>(zoneIdx)], zoneIdx);
     for (const Barrier& b : map_.Barriers()) DrawBarrier(b);
     for (const WallBuy& wb : wallBuys_) DrawWallBuy(wb, equippedWeapon_);
+    for (const PerkMachine& perk : perkMachines_) DrawPerkMachine(perk, powerSwitch_.activated);
+    DrawPowerSwitch(powerSwitch_);
     mysteryBox_.Draw();
 
     for (const auto& z : zombies_) {
@@ -699,6 +869,7 @@ void ZombiesMode::Draw() {
     }
     projectiles_.Draw();
     particles_.Draw();
+    floatingText_.Draw();
     economy_.Draw();
 
     const ZombieWeaponStats& equippedStats = GetZombieWeaponStats(equippedWeapon_);
@@ -714,16 +885,26 @@ void ZombiesMode::Draw() {
     EndMode2D();
 
     // --- HUD ---
+    if (state_ == RunState::Playing) DrawLowHealthVignette(player_.health / player_.maxHealth);
     DrawHealthBar(Vector2{20, 20}, 260, 22, player_.health / player_.maxHealth, Color{60, 200, 90, 255});
     DrawText(TextFormat("HP %d/%d", static_cast<int>(player_.health), static_cast<int>(player_.maxHealth)), 28, 22, 16, RAYWHITE);
 
     std::string roundText = "ROUND " + ToRoman(director_.Round());
     int rw = MeasureText(roundText.c_str(), 24);
     DrawText(roundText.c_str(), cfg::kScreenWidth / 2 - rw / 2, 20, 24, RAYWHITE);
+
+    const char* powerText = powerSwitch_.activated ? "POWER: ON" : "POWER: OFF";
+    int pw2 = MeasureText(powerText, 14);
+    DrawText(powerText, cfg::kScreenWidth / 2 - pw2 / 2, 48, 14, powerSwitch_.activated ? Color{255, 230, 140, 255} : GRAY);
+
     if (director_.InDowntime()) {
         std::string next = TextFormat("Next round in %.0fs", director_.DowntimeRemaining());
         int nw = MeasureText(next.c_str(), 16);
-        DrawText(next.c_str(), cfg::kScreenWidth / 2 - nw / 2, 48, 16, GOLD);
+        DrawText(next.c_str(), cfg::kScreenWidth / 2 - nw / 2, 72, 16, GOLD);
+
+        std::string recap = TextFormat("+%d Crumbs this round", pointsEarnedLastRound_);
+        int rcw = MeasureText(recap.c_str(), 14);
+        DrawText(recap.c_str(), cfg::kScreenWidth / 2 - rcw / 2, 92, 14, Color{255, 230, 140, 255});
     }
 
     DrawText(TextFormat("CRUMBS: %d", economy_.Points()), cfg::kScreenWidth - 220, 20, 20, GOLD);
@@ -749,13 +930,30 @@ void ZombiesMode::Draw() {
         DrawRectangle(0, 0, cfg::kScreenWidth, cfg::kScreenHeight, Fade(BLACK, 0.7f));
         const char* msg = "YOU DIED";
         int w = MeasureText(msg, 60);
-        DrawText(msg, cfg::kScreenWidth / 2 - w / 2, cfg::kScreenHeight / 2 - 60, 60, RED);
-        std::string roundMsg = "Reached Round " + ToRoman(director_.Round());
-        int w2 = MeasureText(roundMsg.c_str(), 24);
-        DrawText(roundMsg.c_str(), cfg::kScreenWidth / 2 - w2 / 2, cfg::kScreenHeight / 2 + 10, 24, RAYWHITE);
+        DrawText(msg, cfg::kScreenWidth / 2 - w / 2, cfg::kScreenHeight / 2 - 130, 60, RED);
+
+        int statY = cfg::kScreenHeight / 2 - 50;
+        auto drawStat = [&](const char* label, const std::string& value) {
+            std::string line = std::string(label) + value;
+            int lw = MeasureText(line.c_str(), 22);
+            DrawText(line.c_str(), cfg::kScreenWidth / 2 - lw / 2, statY, 22, RAYWHITE);
+            statY += 30;
+        };
+        drawStat("Round Reached: ", ToRoman(director_.Round()));
+        drawStat("Crumbs: ", std::to_string(economy_.Points()));
+        int minutes = static_cast<int>(runTime_) / 60;
+        int seconds = static_cast<int>(runTime_) % 60;
+        drawStat("Time Survived: ", TextFormat("%d:%02d", minutes, seconds));
+
+        bool newBest = director_.Round() >= bestRound_ && director_.Round() > 0;
+        std::string bestMsg = newBest ? "NEW BEST!" : "Best Round: " + ToRoman(bestRound_);
+        Color bestColor = newBest ? GOLD : LIGHTGRAY;
+        int bw = MeasureText(bestMsg.c_str(), 20);
+        DrawText(bestMsg.c_str(), cfg::kScreenWidth / 2 - bw / 2, statY + 8, 20, bestColor);
+
         const char* hint = "Press R to try again, or [F2] for Story Mode";
         int w3 = MeasureText(hint, 18);
-        DrawText(hint, cfg::kScreenWidth / 2 - w3 / 2, cfg::kScreenHeight / 2 + 46, 18, LIGHTGRAY);
+        DrawText(hint, cfg::kScreenWidth / 2 - w3 / 2, statY + 44, 18, LIGHTGRAY);
     }
 
     EndDrawing();

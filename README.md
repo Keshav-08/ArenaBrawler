@@ -1,7 +1,7 @@
 # Arena Brawler
 
 A small 2D top-down arena brawler prototype (C++20 + raylib), inspired by
-retro arcade brawlers like Food Battle and Hotline Miami. Single arena, three
+retro arcade brawlers like Hotline Miami. Single arena, three
 weapons, escalating enemy waves, no levels/menus — boot straight into wave 1.
 
 ## Build

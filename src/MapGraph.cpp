@@ -7,14 +7,14 @@ Zone MakeZone(std::string name, Rectangle bounds) {
     zone.name = std::move(name);
     zone.bounds = bounds;
     float m = cfg::kRoomWallMargin + 20.0f;
-    // Five fixed spawn nodes around the zone's perimeter; ZombiesDirector
-    // picks among the active zone(s)' points at random each spawn.
+    // Five fixed boarded-up windows around the zone's perimeter; zombies
+    // breach through one at random each spawn (ZombiesDirector::SpawnOne).
     zone.spawnPoints = {
-        Vector2{bounds.x + m, bounds.y + m},
-        Vector2{bounds.x + bounds.width - m, bounds.y + m},
-        Vector2{bounds.x + m, bounds.y + bounds.height - m},
-        Vector2{bounds.x + bounds.width - m, bounds.y + bounds.height - m},
-        Vector2{bounds.x + bounds.width * 0.5f, bounds.y + m},
+        SpawnWindow{Vector2{bounds.x + m, bounds.y + m}},
+        SpawnWindow{Vector2{bounds.x + bounds.width - m, bounds.y + m}},
+        SpawnWindow{Vector2{bounds.x + m, bounds.y + bounds.height - m}},
+        SpawnWindow{Vector2{bounds.x + bounds.width - m, bounds.y + bounds.height - m}},
+        SpawnWindow{Vector2{bounds.x + bounds.width * 0.5f, bounds.y + m}},
     };
     return zone;
 }
@@ -25,14 +25,22 @@ void MapGraph::BuildDefaultMap() {
     zones_.clear();
     barriers_.clear();
 
+    // Each room gets its own proportions instead of a uniform box, so the
+    // map reads as distinct spaces rather than the same rectangle four
+    // times: a wide-open Cafeteria, a narrow Storage Hall corridor, a
+    // squarish Industrial Kitchen, and a wide Deep Freezer finale room.
+    // True branching topology (a zone reachable two ways) is out of scope —
+    // MapGraph::ZoneIndexContaining is 1-D X-slab logic and would need a
+    // real point-in-rect rework to support that safely; varying each zone's
+    // width/height is the low-risk version of "the map feels dry."
     float x = 0.0f;
-    zones_.push_back(MakeZone("Cafeteria", Rectangle{x, 0.0f, cfg::kRoomWidth, cfg::kRoomHeight}));
-    x += cfg::kRoomWidth;
-    zones_.push_back(MakeZone("Storage Hall", Rectangle{x, 0.0f, cfg::kRoomWidth, cfg::kRoomHeight}));
-    x += cfg::kRoomWidth;
-    zones_.push_back(MakeZone("Industrial Kitchen", Rectangle{x, 0.0f, cfg::kRoomWidth, cfg::kRoomHeight}));
-    x += cfg::kRoomWidth;
-    zones_.push_back(MakeZone("Deep Freezer", Rectangle{x, 0.0f, cfg::kRoomWidth, cfg::kRoomHeight}));
+    zones_.push_back(MakeZone("Cafeteria", Rectangle{x, 0.0f, 2200.0f, 1200.0f}));
+    x += 2200.0f;
+    zones_.push_back(MakeZone("Storage Hall", Rectangle{x, 0.0f, 1500.0f, 750.0f}));
+    x += 1500.0f;
+    zones_.push_back(MakeZone("Industrial Kitchen", Rectangle{x, 0.0f, 1750.0f, 1350.0f}));
+    x += 1750.0f;
+    zones_.push_back(MakeZone("Deep Freezer", Rectangle{x, 0.0f, 2300.0f, 1150.0f}));
 
     zones_[0].active = true; // spawn room, active immediately
 
@@ -40,32 +48,34 @@ void MapGraph::BuildDefaultMap() {
     // as Room.hpp's Obstacle/Hazard); positions avoid the wall-buy/mystery
     // box/spawn spots placed further below.
     zones_[0].obstacles = {
-        Obstacle{Vector2{500.0f, 700.0f}, 34.0f, ObstacleKind::Table},
-        Obstacle{Vector2{950.0f, 850.0f}, 34.0f, ObstacleKind::Table},
-        Obstacle{Vector2{1450.0f, 700.0f}, 34.0f, ObstacleKind::Table},
+        Obstacle{Vector2{580.0f, 800.0f}, 34.0f, ObstacleKind::Table},
+        Obstacle{Vector2{1100.0f, 970.0f}, 34.0f, ObstacleKind::Table},
+        Obstacle{Vector2{1680.0f, 800.0f}, 34.0f, ObstacleKind::Table},
     };
     zones_[1].obstacles = {
-        Obstacle{Vector2{300.0f, 300.0f}, 40.0f, ObstacleKind::Shelf},
-        Obstacle{Vector2{300.0f, 750.0f}, 40.0f, ObstacleKind::Shelf},
-        Obstacle{Vector2{1600.0f, 300.0f}, 40.0f, ObstacleKind::Shelf},
-        Obstacle{Vector2{1600.0f, 750.0f}, 40.0f, ObstacleKind::Shelf},
+        Obstacle{Vector2{237.0f, 214.0f}, 40.0f, ObstacleKind::Shelf},
+        Obstacle{Vector2{237.0f, 536.0f}, 40.0f, ObstacleKind::Shelf},
+        Obstacle{Vector2{1263.0f, 214.0f}, 40.0f, ObstacleKind::Shelf},
+        Obstacle{Vector2{1263.0f, 536.0f}, 40.0f, ObstacleKind::Shelf},
     };
     zones_[2].obstacles = {
-        Obstacle{Vector2{500.0f, 850.0f}, 34.0f, ObstacleKind::Counter},
-        Obstacle{Vector2{950.0f, 300.0f}, 34.0f, ObstacleKind::Counter},
-        Obstacle{Vector2{1450.0f, 850.0f}, 34.0f, ObstacleKind::Counter},
+        Obstacle{Vector2{461.0f, 1093.0f}, 34.0f, ObstacleKind::Counter},
+        Obstacle{Vector2{875.0f, 386.0f}, 34.0f, ObstacleKind::Counter},
+        Obstacle{Vector2{1336.0f, 1093.0f}, 34.0f, ObstacleKind::Counter},
     };
     zones_[3].obstacles = {
-        Obstacle{Vector2{350.0f, 250.0f}, 32.0f, ObstacleKind::MeatRack},
-        Obstacle{Vector2{1550.0f, 250.0f}, 32.0f, ObstacleKind::MeatRack},
-        Obstacle{Vector2{950.0f, 850.0f}, 32.0f, ObstacleKind::MeatRack},
+        Obstacle{Vector2{424.0f, 274.0f}, 32.0f, ObstacleKind::MeatRack},
+        Obstacle{Vector2{1877.0f, 274.0f}, 32.0f, ObstacleKind::MeatRack},
+        Obstacle{Vector2{1150.0f, 931.0f}, 32.0f, ObstacleKind::MeatRack},
     };
 
     auto makeBarrier = [this](int from, int to, int cost) {
         const Zone& a = zones_[static_cast<size_t>(from)];
+        const Zone& b2 = zones_[static_cast<size_t>(to)];
         float gateX = a.bounds.x + a.bounds.width;
+        float gateHeight = std::max(a.bounds.height, b2.bounds.height);
         Barrier b;
-        b.bounds = Rectangle{gateX - 20.0f, a.bounds.y, 40.0f, a.bounds.height};
+        b.bounds = Rectangle{gateX - 20.0f, 0.0f, 40.0f, gateHeight};
         b.cost = cost;
         b.fromZone = from;
         b.toZone = to;

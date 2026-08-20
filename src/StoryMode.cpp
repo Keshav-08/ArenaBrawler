@@ -3,14 +3,14 @@
 #include <string>
 
 StoryMode::StoryMode(AudioManager& audio) : audio_(audio) {
-    weapons_.push_back(std::make_unique<CelerySword>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_));
-    weapons_.push_back(std::make_unique<ChurroBlaster>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_));
-    weapons_.push_back(std::make_unique<BurritoBomb>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_));
-    weapons_.push_back(std::make_unique<NachoShield>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_));
-    weapons_.push_back(std::make_unique<SkewerSpear>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_));
-    weapons_.push_back(std::make_unique<SalsaScattershot>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_));
-    weapons_.push_back(std::make_unique<HabaneroHandful>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_));
-    weapons_.push_back(std::make_unique<FondueFork>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_));
+    weapons_.push_back(std::make_unique<CelerySword>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_, floatingText_));
+    weapons_.push_back(std::make_unique<ChurroBlaster>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_, floatingText_));
+    weapons_.push_back(std::make_unique<BurritoBomb>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_, floatingText_));
+    weapons_.push_back(std::make_unique<NachoShield>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_, floatingText_));
+    weapons_.push_back(std::make_unique<SkewerSpear>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_, floatingText_));
+    weapons_.push_back(std::make_unique<SalsaScattershot>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_, floatingText_));
+    weapons_.push_back(std::make_unique<HabaneroHandful>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_, floatingText_));
+    weapons_.push_back(std::make_unique<FondueFork>(projectiles_, levels_, particles_, shake_, player_, combo_, pickups_, powerUps_, audio_, score_, floatingText_));
 }
 
 void StoryMode::Enter() { RestartGame(); }
@@ -72,6 +72,7 @@ void StoryMode::ResolveBulletHits() {
             else if (e->IsMarked()) dmg *= cfg::kMarkedDamageMult;
 
             bool killed = e->TakeDamage(dmg);
+            floatingText_.Spawn(e->position, TextFormat("%.0f", dmg), killed ? GOLD : RAYWHITE);
             Vector2 diff = Vector2Subtract(e->position, p.position);
             if (Vector2LengthSqr(diff) > 0.0001f) {
                 e->velocity = Vector2Add(e->velocity, Vector2Scale(Vector2Normalize(diff), 140.0f));
@@ -129,6 +130,11 @@ void StoryMode::RestartGame() {
     currentWeapon_ = 0;
     slot2Weapon_ = -1;
     hitStopTimer_ = 0.0f;
+    comboPopTimer_ = 0.0f;
+    lastStreak_ = 0;
+    runTime_ = 0.0f;
+    // bestScore_ is deliberately NOT reset here — it survives across
+    // restarts for the life of the program (see StoryMode.hpp).
     difficultyChosen_ = false;
     difficulty_ = Difficulty::Normal;
     StartLevel(false);
@@ -144,7 +150,7 @@ void StoryMode::ResolvePickupCollection() {
         switch (item.kind) {
             case PickupKind::Health:
                 player_.Heal(cfg::kHealthPickupHeal);
-                audio_.Play(Sfx::PickupHealth);
+                audio_.Play(Sfx::PickupHealth, 1.0f, 0.15f);
                 break;
 
             case PickupKind::Ammo:
@@ -170,7 +176,7 @@ void StoryMode::ResolvePickupCollection() {
             }
 
             case PickupKind::PowerUp:
-                audio_.Play(Sfx::PickupPowerUp);
+                audio_.Play(Sfx::PickupPowerUp, 1.0f, 0.15f);
                 switch (item.powerUpType) {
                     case PowerUpType::InstaKill: powerUps_.instaKillTimer = cfg::kPowerUpDuration; break;
                     case PowerUpType::DoublePoints: powerUps_.doublePointsTimer = cfg::kPowerUpDuration; break;
@@ -251,6 +257,7 @@ void StoryMode::Update(float dt) {
                 StartLevel(true);
             } else {
                 state_ = GameState::Victory;
+                if (score_ > bestScore_) bestScore_ = score_;
                 audio_.Play(Sfx::Victory);
             }
         }
@@ -258,9 +265,14 @@ void StoryMode::Update(float dt) {
     }
 
     // state_ == Playing
+    runTime_ += dt;
     combo_.Update(dt);
     powerUps_.Update(dt);
     combo_.powerUpScoreMult = powerUps_.DoublePoints() ? cfg::kDoublePointsMult : 1.0f;
+    if (combo_.streak > lastStreak_) comboPopTimer_ = 0.2f;
+    lastStreak_ = combo_.streak;
+    if (comboPopTimer_ > 0.0f) comboPopTimer_ -= dt;
+    floatingText_.Update(dt);
 
     Camera2D camera = BuildCamera();
     Vector2 mouseWorld = GetScreenToWorld2D(GetMousePosition(), camera);
@@ -306,6 +318,7 @@ void StoryMode::Update(float dt) {
 
     if (!player_.IsAlive()) {
         state_ = GameState::GameOver;
+        if (score_ > bestScore_) bestScore_ = score_;
         audio_.Play(Sfx::GameOver);
     }
 }
@@ -418,6 +431,23 @@ void DrawHealthBar(Vector2 pos, float width, float height, float frac, Color fg)
     DrawRectangleLines(static_cast<int>(pos.x), static_cast<int>(pos.y), static_cast<int>(width), static_cast<int>(height), RAYWHITE);
 }
 
+// Soft red edge vignette that intensifies (and slowly pulses) below ~30% HP
+// — same sin(GetTime())-pulse technique already used by the safe-zone
+// warning and locked-gate stripes above.
+void DrawLowHealthVignette(float healthFrac) {
+    constexpr float kThreshold = 0.3f;
+    if (healthFrac >= kThreshold) return;
+    float severity = 1.0f - (healthFrac / kThreshold); // 0 at threshold, 1 at 0 HP
+    float pulse = 0.6f + 0.4f * std::sin(static_cast<float>(GetTime()) * 4.0f);
+    float alpha = severity * (0.35f + 0.25f * pulse);
+    float edge = 60.0f + severity * 60.0f;
+    Color c = ColorAlpha(RED, alpha);
+    DrawRectangleGradientV(0, 0, cfg::kScreenWidth, static_cast<int>(edge), c, Fade(c, 0.0f));
+    DrawRectangleGradientV(0, cfg::kScreenHeight - static_cast<int>(edge), cfg::kScreenWidth, static_cast<int>(edge), Fade(c, 0.0f), c);
+    DrawRectangleGradientH(0, 0, static_cast<int>(edge), cfg::kScreenHeight, c, Fade(c, 0.0f));
+    DrawRectangleGradientH(cfg::kScreenWidth - static_cast<int>(edge), 0, static_cast<int>(edge), cfg::kScreenHeight, Fade(c, 0.0f), c);
+}
+
 }  // namespace
 
 void StoryMode::Draw() {
@@ -439,6 +469,7 @@ void StoryMode::Draw() {
     projectiles_.Draw();
     pickups_.Draw();
     particles_.Draw();
+    floatingText_.Draw();
     weapons_[static_cast<size_t>(currentWeapon_)]->Draw(player_.position);
     player_.Draw();
     if (debugMode_) {
@@ -448,6 +479,7 @@ void StoryMode::Draw() {
     EndMode2D();
 
     // --- HUD (unaffected by screen shake / camera scroll) ---
+    if (state_ == GameState::Playing) DrawLowHealthVignette(player_.health / player_.maxHealth);
     DrawHealthBar(Vector2{20, 20}, 260, 22, player_.health / player_.maxHealth, Color{60, 200, 90, 255});
     DrawText(TextFormat("HP %d/%d", static_cast<int>(player_.health), static_cast<int>(player_.maxHealth)), 28, 22, 16, RAYWHITE);
 
@@ -459,7 +491,12 @@ void StoryMode::Draw() {
     DrawText(TextFormat("SCORE %06d", score_), cfg::kScreenWidth - 200, 20, 20, RAYWHITE);
     DrawText(TextFormat("%s", DifficultyName(difficulty_)), cfg::kScreenWidth - 200, 44, 14, LIGHTGRAY);
     if (combo_.streak > 1) {
-        DrawText(TextFormat("STREAK x%d  (%.1fx)", combo_.streak, combo_.Multiplier()), cfg::kScreenWidth - 200, 62, 14, GOLD);
+        // Brief scale-pulse on each new kill (comboPopTimer_ counts down from
+        // 0.2s) so a growing streak reads as escalating, not a flat counter.
+        float popT = mathutil::Clamp01(comboPopTimer_ / 0.2f);
+        int fontSize = 14 + static_cast<int>(8.0f * popT);
+        const char* text = TextFormat("STREAK x%d  (%.1fx)", combo_.streak, combo_.Multiplier());
+        DrawText(text, cfg::kScreenWidth - 200, 62 - static_cast<int>(4.0f * popT), fontSize, GOLD);
     }
 
     // Active power-up buffs.
@@ -531,30 +568,35 @@ void StoryMode::Draw() {
         }
     }
 
-    if (state_ == GameState::GameOver) {
+    if (state_ == GameState::GameOver || state_ == GameState::Victory) {
+        bool won = state_ == GameState::Victory;
         DrawRectangle(0, 0, cfg::kScreenWidth, cfg::kScreenHeight, Fade(BLACK, 0.65f));
-        const char* msg = "GAME OVER";
+        const char* msg = won ? "VICTORY!" : "GAME OVER";
+        Color msgColor = won ? GOLD : RED;
         int w = MeasureText(msg, 60);
-        DrawText(msg, cfg::kScreenWidth / 2 - w / 2, cfg::kScreenHeight / 2 - 60, 60, RED);
-        std::string scoreMsg = "Final Score: " + std::to_string(score_);
-        int w2 = MeasureText(scoreMsg.c_str(), 24);
-        DrawText(scoreMsg.c_str(), cfg::kScreenWidth / 2 - w2 / 2, cfg::kScreenHeight / 2 + 10, 24, RAYWHITE);
-        const char* hint = "Press R to restart";
-        int w3 = MeasureText(hint, 18);
-        DrawText(hint, cfg::kScreenWidth / 2 - w3 / 2, cfg::kScreenHeight / 2 + 46, 18, LIGHTGRAY);
-    }
+        DrawText(msg, cfg::kScreenWidth / 2 - w / 2, cfg::kScreenHeight / 2 - 130, 60, msgColor);
 
-    if (state_ == GameState::Victory) {
-        DrawRectangle(0, 0, cfg::kScreenWidth, cfg::kScreenHeight, Fade(BLACK, 0.65f));
-        const char* msg = "VICTORY!";
-        int w = MeasureText(msg, 60);
-        DrawText(msg, cfg::kScreenWidth / 2 - w / 2, cfg::kScreenHeight / 2 - 60, 60, GOLD);
-        std::string scoreMsg = "Final Score: " + std::to_string(score_);
-        int w2 = MeasureText(scoreMsg.c_str(), 24);
-        DrawText(scoreMsg.c_str(), cfg::kScreenWidth / 2 - w2 / 2, cfg::kScreenHeight / 2 + 10, 24, RAYWHITE);
-        const char* hint = "Press R to play again";
+        int statY = cfg::kScreenHeight / 2 - 50;
+        auto drawStat = [&](const char* label, const std::string& value) {
+            std::string line = std::string(label) + value;
+            int lw = MeasureText(line.c_str(), 22);
+            DrawText(line.c_str(), cfg::kScreenWidth / 2 - lw / 2, statY, 22, RAYWHITE);
+            statY += 30;
+        };
+        drawStat("Score: ", std::to_string(score_));
+        drawStat("Level Reached: ", std::to_string(levels_.LevelNumber()) + "/" + std::to_string(levels_.LevelCount()));
+        int minutes = static_cast<int>(runTime_) / 60;
+        int seconds = static_cast<int>(runTime_) % 60;
+        drawStat("Time Survived: ", TextFormat("%d:%02d", minutes, seconds));
+
+        std::string bestMsg = score_ >= bestScore_ && score_ > 0 ? "NEW BEST!" : "Best: " + std::to_string(bestScore_);
+        Color bestColor = (score_ >= bestScore_ && score_ > 0) ? GOLD : LIGHTGRAY;
+        int bw = MeasureText(bestMsg.c_str(), 20);
+        DrawText(bestMsg.c_str(), cfg::kScreenWidth / 2 - bw / 2, statY + 8, 20, bestColor);
+
+        const char* hint = won ? "Press R to play again" : "Press R to restart";
         int w3 = MeasureText(hint, 18);
-        DrawText(hint, cfg::kScreenWidth / 2 - w3 / 2, cfg::kScreenHeight / 2 + 46, 18, LIGHTGRAY);
+        DrawText(hint, cfg::kScreenWidth / 2 - w3 / 2, statY + 44, 18, LIGHTGRAY);
     }
 
     EndDrawing();

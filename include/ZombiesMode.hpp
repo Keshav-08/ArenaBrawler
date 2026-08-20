@@ -4,6 +4,7 @@
 #include "Common.hpp"
 #include "Economy.hpp"
 #include "Enemy.hpp"
+#include "FloatingText.hpp"
 #include "GameMode.hpp"
 #include "MapGraph.hpp"
 #include "ParticleSystem.hpp"
@@ -36,7 +37,9 @@ public:
 
 private:
     void HandleInteract();
+    void ApplyPerk(PerkKind kind);
     void HandleAttack(Vector2 origin, Vector2 aimDir, bool heldNow, bool pressedNow, float dt);
+    void TriggerHitStop(float duration); // mirrors StoryMode::TriggerHitStop exactly
 
     // One resolver per FireMode; HandleAttack dispatches into these instead
     // of switching on ZombieWeaponKind, so most of the 30 guns need zero
@@ -71,14 +74,25 @@ private:
     ZombiesDirector director_;
     std::vector<WallBuy> wallBuys_;
     MysteryBox mysteryBox_;
+    PowerSwitch powerSwitch_;
+    std::vector<PerkMachine> perkMachines_;
     std::vector<std::unique_ptr<Enemy>> zombies_;
     std::vector<std::pair<EnemyType, Vector2>> pendingSplits_; // deferred PickleSplitter children
+    FloatingTextPool floatingText_;
 
     ZombieWeaponKind equippedWeapon_ = ZombieWeaponKind::Sword;
     int ammo_ = 0;
     float weaponCooldownTimer_ = 0.0f;
     float swingTimer_ = 0.0f;
     float swingAngle_ = 0.0f;
+
+    // Perk buffs (Part D): Speedy Sauce and Double Scoop touch state that
+    // lives on ZombiesMode, not Player (reload timing/weapon damage are
+    // resolved here, not on the Player class) — Juggernog and Iron Stomach
+    // instead write straight to player_.maxHealth/health and
+    // player_.EquipArmor respectively, so they need no multiplier fields.
+    float reloadSpeedMult_ = 1.0f;
+    float perkDamageMult_ = 1.0f;
 
     // Auto-reload (mirrors Story Mode's Churro Blaster): empty magazine
     // starts a timer that refills it, so running dry doesn't require a trip
@@ -94,6 +108,19 @@ private:
     Vector2 burstAimDir_{};
 
     float timeSinceLastHit_ = 0.0f; // drives passive HP regen (no health pickups in this mode)
+
+    // Hit-stop (mirrors StoryMode's hitStopTimer_/TriggerHitStop pattern —
+    // this mode has no LevelManager to route it through, so it owns its own
+    // timer + early-return freeze directly in Update).
+    float hitStopTimer_ = 0.0f;
+
+    // Run payoff: runTime_ resets every Enter() like everything else;
+    // bestRound_ deliberately does NOT (see Enter()'s reset list) so it
+    // survives across R-to-restart for the life of the program.
+    float runTime_ = 0.0f;
+    int bestRound_ = 0;
+    int pointsAtRoundStart_ = 0;   // snapshot for the round-downtime points-earned recap
+    int pointsEarnedLastRound_ = 0; // computed once when a round clears, shown through downtime
 
     enum class RunState { Playing, GameOver };
     RunState state_ = RunState::Playing;
