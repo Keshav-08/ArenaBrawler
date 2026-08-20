@@ -49,7 +49,7 @@ void CelerySword::Attack(Vector2 origin, Vector2 dir) {
 
         if (killed) {
             particles_.SpawnBurst(e->position, 16, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f, 3.0f, 6.0f);
-            OnKill(e->position, 25);
+            OnKill(*e, 25);
         }
     }
 
@@ -180,7 +180,7 @@ void BurritoBomb::Update(float dt) {
             e->velocity = Vector2Add(e->velocity, mathutil::RadialImpulse(e->position, ex.position, cfg::kBombImpulseStrength, dt));
             if (killed) {
                 particles_.SpawnBurst(e->position, 14, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f);
-                OnKill(e->position, 25);
+                OnKill(*e, 25);
             }
         }
 
@@ -277,7 +277,7 @@ void NachoShield::Attack(Vector2 origin, Vector2 dir) {
 
         if (killed) {
             particles_.SpawnBurst(e->position, 14, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f);
-            OnKill(e->position, 20);
+            OnKill(*e, 20);
         }
     }
 
@@ -307,4 +307,292 @@ void NachoShield::DrawUI(Vector2 screenPos) const {
                   static_cast<int>(bar.height), guardColor);
     DrawRectangleLinesEx(bar, 1.0f, RAYWHITE);
     DrawText("[hold RMB] block  [LMB] bash", static_cast<int>(screenPos.x), static_cast<int>(screenPos.y + 36), 12, LIGHTGRAY);
+}
+
+// ===========================================================================
+// SkewerSpear
+// ===========================================================================
+SkewerSpear::SkewerSpear(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
+                          ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
+    : Weapon("Skewer Spear", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+
+void SkewerSpear::Update(float dt) {
+    if (cooldownTimer_ > 0.0f) cooldownTimer_ -= dt;
+    if (thrustTimer_ > 0.0f) thrustTimer_ -= dt;
+}
+
+void SkewerSpear::Attack(Vector2 origin, Vector2 dir) {
+    if (!CanAttack()) return;
+    cooldownTimer_ = cfg::kSpearCooldown;
+    thrustTimer_ = cfg::kSpearThrustDuration;
+    thrustAngle_ = mathutil::AngleOf(dir);
+    audio_.Play(Sfx::SwordSwing, 0.7f, 0.2f);
+
+    const float halfArc = mathutil::DegToRadF(cfg::kSpearArcDeg) * 0.5f;
+    bool hitAnything = false;
+
+    for (auto& e : levels_.GetEnemies()) {
+        if (!e->IsAlive()) continue;
+        Vector2 toEnemy = Vector2Subtract(e->position, origin);
+        float dist = Vector2Length(toEnemy);
+        if (dist > cfg::kSpearRange + e->radius) continue;
+        if (dist < 0.0001f) continue;
+
+        float angleToEnemy = mathutil::AngleOf(toEnemy);
+        float diff = std::fabs(mathutil::AngleDiff(thrustAngle_, angleToEnemy));
+        if (diff > halfArc) continue;
+
+        hitAnything = true;
+        float dmg = cfg::kSpearDamage;
+        bool juggled = Vector2Length(e->velocity) > cfg::kJuggleVelocityThreshold;
+        if (juggled) dmg *= cfg::kJuggleDamageMult;
+        dmg = ApplyDamageBuffs(*e, dmg, /*isMelee=*/true);
+
+        bool killed = e->TakeDamage(dmg);
+        e->MarkForBonus(cfg::kMarkedDuration);
+        Vector2 pushDir = Vector2Scale(toEnemy, 1.0f / dist);
+        e->velocity = Vector2Add(e->velocity, Vector2Scale(pushDir, cfg::kSpearKnockback));
+        particles_.SpawnBurst(e->position, 10, juggled ? Color{255, 230, 120, 255} : Color{220, 220, 230, 255},
+                               80.0f, 260.0f, 0.15f, 0.35f);
+
+        if (killed) {
+            particles_.SpawnBurst(e->position, 16, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f, 3.0f, 6.0f);
+            OnKill(*e, 28);
+        }
+    }
+
+    if (hitAnything) {
+        shake_.Trigger(0.16f, 5.0f);
+        audio_.Play(Sfx::HitLanded, 0.7f, 0.2f);
+    }
+}
+
+void SkewerSpear::Draw(Vector2 origin) const {
+    if (thrustTimer_ <= 0.0f) return;
+    // Extends out then retracts, unlike the sword's arc sweep.
+    float t = 1.0f - mathutil::Clamp01(thrustTimer_ / cfg::kSpearThrustDuration);
+    float extend = t < 0.5f ? (t * 2.0f) : (1.0f - (t - 0.5f) * 2.0f);
+    Vector2 tip = Vector2Add(origin, mathutil::FromAngle(thrustAngle_, cfg::kSpearRange * extend));
+    DrawLineEx(origin, tip, 4.0f, Color{210, 210, 220, static_cast<unsigned char>(255 * (1.0f - t))});
+    DrawCircleV(tip, 5.0f, Fade(Color{210, 210, 220, 255}, 1.0f - t));
+}
+
+void SkewerSpear::DrawUI(Vector2 screenPos) const {
+    DrawText("SKEWER SPEAR", static_cast<int>(screenPos.x), static_cast<int>(screenPos.y), 18, RAYWHITE);
+    float frac = mathutil::Clamp01(1.0f - cooldownTimer_ / cfg::kSpearCooldown);
+    Rectangle bar{screenPos.x, screenPos.y + 22, 160, 10};
+    DrawRectangleRec(bar, Fade(DARKGRAY, 0.6f));
+    DrawRectangle(static_cast<int>(bar.x), static_cast<int>(bar.y), static_cast<int>(bar.width * frac),
+                  static_cast<int>(bar.height), LIGHTGRAY);
+    DrawRectangleLinesEx(bar, 1.0f, RAYWHITE);
+}
+
+// ===========================================================================
+// SalsaScattershot
+// ===========================================================================
+SalsaScattershot::SalsaScattershot(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
+                                    ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
+    : Weapon("Salsa Scattershot", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+
+void SalsaScattershot::Update(float dt) {
+    if (cooldownTimer_ > 0.0f) cooldownTimer_ -= dt;
+    if (muzzleFlashTimer_ > 0.0f) muzzleFlashTimer_ -= dt;
+
+    if (powerUps_.RapidFire() && ammo_ <= 0) {
+        ammo_ = cfg::kScattershotMagazine;
+        reloadTimer_ = 0.0f;
+    } else if (ammo_ <= 0) {
+        reloadTimer_ -= dt;
+        if (reloadTimer_ <= 0.0f) {
+            ammo_ = cfg::kScattershotMagazine;
+        }
+    }
+}
+
+void SalsaScattershot::Attack(Vector2 origin, Vector2 dir) {
+    if (!CanAttack()) return;
+    cooldownTimer_ = powerUps_.RapidFire() ? cfg::kRapidFireCooldown : cfg::kScattershotCooldown;
+
+    float baseAngle = mathutil::AngleOf(dir);
+    lastAngle_ = baseAngle;
+    for (int i = 0; i < cfg::kScattershotPelletCount; ++i) {
+        float spread = mathutil::DegToRadF(mathutil::RandomFloat(-cfg::kScattershotSpreadDeg, cfg::kScattershotSpreadDeg));
+        float angle = baseAngle + spread;
+        Vector2 vel = mathutil::FromAngle(angle, cfg::kScattershotBulletSpeed);
+        Vector2 spawnPos = Vector2Add(origin, mathutil::FromAngle(angle, cfg::kPlayerRadius + 4.0f));
+        projectiles_.SpawnBullet(spawnPos, vel, cfg::kScattershotBulletDamage, cfg::kScattershotBulletRadius, cfg::kScattershotBulletLife);
+    }
+
+    particles_.SpawnMuzzleFlash(Vector2Add(origin, mathutil::FromAngle(baseAngle, cfg::kPlayerRadius + 4.0f)), baseAngle, Color{230, 70, 60, 255});
+    muzzleFlashTimer_ = 0.06f;
+    audio_.Play(Sfx::BlasterShot, 0.6f, 0.15f);
+
+    if (!powerUps_.RapidFire()) {
+        ammo_--;
+        if (ammo_ <= 0) {
+            reloadTimer_ = cfg::kScattershotReloadTime;
+        }
+    }
+}
+
+void SalsaScattershot::Draw(Vector2 origin) const {
+    if (muzzleFlashTimer_ > 0.0f) {
+        Vector2 tip = Vector2Add(origin, mathutil::FromAngle(lastAngle_, cfg::kPlayerRadius + 10.0f));
+        DrawCircleV(tip, 7.0f, Fade(Color{230, 70, 60, 255}, 0.8f));
+    }
+}
+
+void SalsaScattershot::DrawUI(Vector2 screenPos) const {
+    DrawText("SALSA SCATTERSHOT", static_cast<int>(screenPos.x), static_cast<int>(screenPos.y), 18, RAYWHITE);
+    if (ammo_ <= 0) {
+        float frac = mathutil::Clamp01(1.0f - reloadTimer_ / cfg::kScattershotReloadTime);
+        DrawText("RELOADING", static_cast<int>(screenPos.x), static_cast<int>(screenPos.y + 22), 14, ORANGE);
+        Rectangle bar{screenPos.x, screenPos.y + 40, 160, 8};
+        DrawRectangleRec(bar, Fade(DARKGRAY, 0.6f));
+        DrawRectangle(static_cast<int>(bar.x), static_cast<int>(bar.y), static_cast<int>(bar.width * frac),
+                      static_cast<int>(bar.height), ORANGE);
+        DrawRectangleLinesEx(bar, 1.0f, RAYWHITE);
+    } else {
+        for (int i = 0; i < cfg::kScattershotMagazine; ++i) {
+            Color c = i < ammo_ ? Color{230, 70, 60, 255} : Fade(DARKGRAY, 0.6f);
+            DrawRectangle(static_cast<int>(screenPos.x) + i * 14, static_cast<int>(screenPos.y) + 22, 10, 14, c);
+        }
+    }
+}
+
+// ===========================================================================
+// HabaneroHandful
+// ===========================================================================
+HabaneroHandful::HabaneroHandful(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
+                                  ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
+    : Weapon("Habanero Handful", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+
+void HabaneroHandful::Update(float dt) {
+    // Explosions are resolved by BurritoBomb::Update (unconditionally
+    // constructed and ticked every frame regardless of loadout), so this
+    // must NOT also call PopExplosions() — see the class comment in
+    // Weapon.hpp.
+    if (cooldownTimer_ > 0.0f) cooldownTimer_ -= dt;
+}
+
+void HabaneroHandful::Attack(Vector2 origin, Vector2 dir) {
+    if (!CanAttack()) return;
+    cooldownTimer_ = cfg::kHabaneroCooldown;
+
+    float baseAngle = mathutil::AngleOf(dir);
+    float half = static_cast<float>(cfg::kHabaneroBombCount - 1) * 0.5f;
+    for (int i = 0; i < cfg::kHabaneroBombCount; ++i) {
+        float angle = baseAngle + mathutil::DegToRadF(cfg::kHabaneroFanSpreadDeg) * (static_cast<float>(i) - half);
+        Vector2 vel = mathutil::FromAngle(angle, cfg::kHabaneroThrowSpeed);
+        projectiles_.SpawnBomb(origin, vel, cfg::kHabaneroDamage, cfg::kHabaneroBlastRadius, cfg::kHabaneroFuse);
+    }
+    audio_.Play(Sfx::BlasterShot, 0.5f, 0.15f);
+}
+
+void HabaneroHandful::Draw(Vector2 origin) const { (void)origin; }
+
+void HabaneroHandful::DrawUI(Vector2 screenPos) const {
+    DrawText("HABANERO HANDFUL", static_cast<int>(screenPos.x), static_cast<int>(screenPos.y), 18, RAYWHITE);
+    float frac = mathutil::Clamp01(1.0f - cooldownTimer_ / cfg::kHabaneroCooldown);
+    Rectangle bar{screenPos.x, screenPos.y + 22, 160, 10};
+    DrawRectangleRec(bar, Fade(DARKGRAY, 0.6f));
+    DrawRectangle(static_cast<int>(bar.x), static_cast<int>(bar.y), static_cast<int>(bar.width * frac),
+                  static_cast<int>(bar.height), Color{200, 60, 30, 255});
+    DrawRectangleLinesEx(bar, 1.0f, RAYWHITE);
+}
+
+// ===========================================================================
+// FondueFork
+// ===========================================================================
+FondueFork::FondueFork(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
+                        ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score)
+    : Weapon("Fondue Fork", projectiles, levels, particles, shake, player, combo, pickups, powerUps, audio, score) {}
+
+void FondueFork::Update(float dt) {
+    // Rising edge only: holding RMB doesn't sustain a block like Shield does
+    // — it arms a short negation window, then must fully cool down before
+    // it can trigger again, win or lose.
+    bool wasParrying = parrying_;
+    if (wantsParry_ && !wasParrying && parryCooldownTimer_ <= 0.0f) {
+        parrying_ = true;
+        parryTimer_ = cfg::kForkParryWindow;
+    }
+
+    if (parrying_) {
+        parryTimer_ -= dt;
+        if (parryTimer_ <= 0.0f || !wantsParry_) {
+            parrying_ = false;
+            parryCooldownTimer_ = cfg::kForkParryCooldown;
+        }
+    } else if (parryCooldownTimer_ > 0.0f) {
+        parryCooldownTimer_ -= dt;
+    }
+
+    if (bashCooldownTimer_ > 0.0f) bashCooldownTimer_ -= dt;
+    if (bashSwingTimer_ > 0.0f) bashSwingTimer_ -= dt;
+}
+
+void FondueFork::Attack(Vector2 origin, Vector2 dir) {
+    if (!CanAttack()) return;
+    bashCooldownTimer_ = cfg::kForkBashCooldown;
+    bashSwingTimer_ = 0.14f;
+    bashAngle_ = mathutil::AngleOf(dir);
+    audio_.Play(Sfx::ShieldBash, 0.7f, 0.15f);
+
+    const float halfArc = mathutil::DegToRadF(cfg::kForkBashArcDeg) * 0.5f;
+    bool hitAnything = false;
+
+    for (auto& e : levels_.GetEnemies()) {
+        if (!e->IsAlive()) continue;
+        Vector2 toEnemy = Vector2Subtract(e->position, origin);
+        float dist = Vector2Length(toEnemy);
+        if (dist > cfg::kForkBashRange + e->radius) continue;
+        if (dist < 0.0001f) continue;
+
+        float angleToEnemy = mathutil::AngleOf(toEnemy);
+        float diff = std::fabs(mathutil::AngleDiff(bashAngle_, angleToEnemy));
+        if (diff > halfArc) continue;
+
+        hitAnything = true;
+        float dmg = ApplyDamageBuffs(*e, cfg::kForkBashDamage, /*isMelee=*/true);
+        bool killed = e->TakeDamage(dmg);
+        Vector2 pushDir = Vector2Scale(toEnemy, 1.0f / dist);
+        e->velocity = Vector2Add(e->velocity, Vector2Scale(pushDir, cfg::kForkBashKnockback));
+        particles_.SpawnBurst(e->position, 8, Color{90, 210, 190, 255}, 100.0f, 300.0f, 0.15f, 0.3f);
+
+        if (killed) {
+            particles_.SpawnBurst(e->position, 14, Color{200, 40, 40, 255}, 60.0f, 260.0f, 0.25f, 0.5f);
+            OnKill(*e, 20);
+        }
+    }
+
+    if (hitAnything) shake_.Trigger(0.15f, 6.0f);
+}
+
+void FondueFork::Draw(Vector2 origin) const {
+    if (parrying_) {
+        float facing = mathutil::RadToDegF(player_.AimAngle());
+        DrawCircleSector(origin, 38.0f, facing - 45.0f, facing + 45.0f, 12, Fade(Color{90, 210, 190, 255}, 0.5f));
+        DrawRing(origin, 34.0f, 38.0f, facing - 45.0f, facing + 45.0f, 12, Fade(RAYWHITE, 0.9f));
+    }
+    if (bashSwingTimer_ > 0.0f) {
+        float t = 1.0f - mathutil::Clamp01(bashSwingTimer_ / 0.14f);
+        Vector2 tip = Vector2Add(origin, mathutil::FromAngle(bashAngle_, cfg::kForkBashRange));
+        DrawLineEx(origin, tip, 5.0f, Color{90, 210, 190, static_cast<unsigned char>(255 * (1.0f - t))});
+    }
+}
+
+void FondueFork::DrawUI(Vector2 screenPos) const {
+    DrawText("FONDUE FORK", static_cast<int>(screenPos.x), static_cast<int>(screenPos.y), 18, RAYWHITE);
+    Rectangle bar{screenPos.x, screenPos.y + 22, 160, 10};
+    DrawRectangleRec(bar, Fade(DARKGRAY, 0.6f));
+    if (parryCooldownTimer_ > 0.0f) {
+        float frac = mathutil::Clamp01(1.0f - parryCooldownTimer_ / cfg::kForkParryCooldown);
+        DrawRectangle(static_cast<int>(bar.x), static_cast<int>(bar.y), static_cast<int>(bar.width * frac),
+                      static_cast<int>(bar.height), RED);
+    } else {
+        DrawRectangleRec(bar, parrying_ ? Fade(Color{90, 210, 190, 255}, 1.0f) : Color{90, 210, 190, 255});
+    }
+    DrawRectangleLinesEx(bar, 1.0f, RAYWHITE);
+    DrawText("[hold RMB] parry  [LMB] bash", static_cast<int>(screenPos.x), static_cast<int>(screenPos.y + 36), 12, LIGHTGRAY);
 }

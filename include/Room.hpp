@@ -21,6 +21,25 @@ struct Hazard {
     Color color = Color{230, 90, 40, 140};
 };
 
+// A solid piece of scenery (rock, crate, tree, cactus, ...) the player and
+// enemies collide with and enemies steer around. `center` is room-local,
+// same convention as Hazard. `kind` picks the rendered shape/detail and is
+// normally chosen to match the room's biome (see Level.cpp).
+struct Obstacle {
+    Vector2 center{};
+    float radius = 32.0f;
+    ObstacleKind kind = ObstacleKind::Rock;
+};
+
+// A guaranteed weapon pickup placed at a fixed spot in a room (as opposed to
+// the random ammo/armor/health/power-up drops from kills) — how the player
+// actually finds the ranged/utility weapon that goes in their second
+// loadout slot. `center` is room-local, same convention as Hazard.
+struct LootSpawn {
+    Vector2 center{};
+    WeaponType weapon;
+};
+
 // A single arena the player fights through. Rooms are laid out sequentially
 // along the world X axis by Level; the boundary between room N and N+1 is
 // sealed (an energy gate is drawn and the player is clamped on that edge)
@@ -37,11 +56,14 @@ struct Room {
     EnemyType bossType = EnemyType::BossBruiser; // only meaningful if isBossRoom
 
     std::vector<Hazard> hazards;
+    std::vector<Obstacle> obstacles;
+    std::vector<LootSpawn> lootSpawns;
 
     // --- Runtime state, mutated by LevelManager as the player progresses ---
     bool entered = false;   // camera/spawns activated once player first enters
     bool cleared = false;   // gate to the next room is open
     size_t nextWaveIndex = 0;
+    float zoneTimer = 0.0f; // boss rooms only: seconds since the shrinking safe zone started
 
     // Inset room bounds that entities are clamped to (walls eat kRoomWallMargin).
     Rectangle PlayArea() const {

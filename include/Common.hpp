@@ -31,6 +31,7 @@ constexpr float kDashCooldown = 0.85f;
 constexpr float kDashIFrames = 0.20f;
 
 constexpr float kContactIFrames = 0.5f;          // grace period after taking contact dmg
+constexpr float kSlowSpeedMult = 0.5f;           // movement multiplier while slowed (BossFrost)
 
 // ---------------------------------------------------------------------------
 // Enemy tuning
@@ -63,6 +64,26 @@ constexpr float kCheddarShooterBulletSpeed = 360.0f;
 constexpr float kCheddarShooterBulletDamage = 8.0f;
 constexpr float kCheddarShooterBulletRadius = 5.0f;
 constexpr float kCheddarShooterBulletLife = 2.2f;
+
+constexpr float kPickleSplitterRadius = 22.0f;
+constexpr float kPickleSplitterHealth = 40.0f;
+constexpr float kPickleSplitterSpeed = 130.0f;
+constexpr float kPickleSplitterDamage = 10.0f;
+constexpr float kPickleSplitterChildSizeMult = 0.6f;
+constexpr float kPickleSplitterChildHealthMult = 0.4f;
+constexpr float kPickleSplitterChildSpeedMult = 1.2f;
+constexpr float kPickleSplitterChildDamageMult = 0.6f;
+constexpr float kPickleSplitterSplitOffset = 22.0f;
+
+constexpr float kSodaBomberRadius = 15.0f;
+constexpr float kSodaBomberHealth = 18.0f;
+constexpr float kSodaBomberSpeed = 260.0f;
+constexpr float kSodaBomberDamage = 0.0f; // deals no plain contact damage; only the detonation hurts
+constexpr float kSodaBomberTriggerRange = 46.0f;
+constexpr float kSodaBomberFuse = 0.35f;   // telegraph before detonating once triggered
+constexpr float kSodaBomberBlastRadius = 100.0f;
+constexpr float kSodaBomberBlastDamage = 24.0f;
+constexpr float kSodaBomberBlastImpulse = 2.0e6f;
 
 constexpr float kEnemyContactCooldown = 0.75f; // per-enemy cooldown between dealing contact dmg
 
@@ -113,6 +134,41 @@ constexpr float kCasterBulletRadius = 6.0f;
 constexpr float kCasterBulletLife = 2.5f;
 constexpr float kCasterSummonInterval = 6.0f; // phase 2 only: summons a minion this often
 
+constexpr float kBurrowerRadius = 30.0f;
+constexpr float kBurrowerHealth = 380.0f;
+constexpr float kBurrowerSpeed = 100.0f;
+constexpr float kBurrowerContactDamage = 0.0f; // harmless while burrowed/traveling; only the emerge AoE hurts
+constexpr float kBurrowerStalkRange = 300.0f;
+constexpr float kBurrowerBurrowDuration = 0.5f;
+constexpr float kBurrowerTravelSpeed = 520.0f;
+constexpr float kBurrowerPhase2TravelSpeedMult = 1.3f;
+constexpr float kBurrowerEmergeTelegraph = 0.35f;
+constexpr float kBurrowerEmergeRadius = 150.0f;
+constexpr float kBurrowerEmergeDamage = 30.0f;
+constexpr float kBurrowerPhase2EmergeDamageMult = 1.25f;
+constexpr float kBurrowerEmergeImpulse = 2.4e6f;
+constexpr float kBurrowerExposedDuration = 1.2f; // vulnerable pause after emerging, before diving again
+constexpr float kBurrowerRecover = 0.6f;
+
+constexpr float kFrostRadius = 32.0f;
+constexpr float kFrostHealth = 480.0f;
+constexpr float kFrostSpeed = 120.0f;
+constexpr float kFrostContactDamage = 14.0f;
+constexpr float kFrostPreferredRange = 260.0f;
+constexpr float kFrostNovaInterval = 3.0f;
+constexpr float kFrostPhase2NovaInterval = 1.8f;
+constexpr float kFrostNovaTelegraph = 0.5f;
+constexpr float kFrostNovaRadius = 190.0f;
+constexpr float kFrostNovaDamage = 22.0f;
+constexpr float kFrostNovaImpulse = 1.8e6f;
+constexpr float kFrostNovaSlowDuration = 1.6f;
+constexpr int   kFrostShardCount = 12; // phase 2 only: full-circle shard burst
+constexpr float kFrostShardInterval = 2.2f;
+constexpr float kFrostShardSpeed = 280.0f;
+constexpr float kFrostShardDamage = 12.0f;
+constexpr float kFrostShardRadius = 6.0f;
+constexpr float kFrostShardLife = 2.5f;
+
 // ---------------------------------------------------------------------------
 // Weapon tuning
 // ---------------------------------------------------------------------------
@@ -155,6 +211,43 @@ constexpr float kShieldBashArcDeg = 100.0f;
 constexpr float kShieldBashDamage = 14.0f;
 constexpr float kShieldBashKnockback = 640.0f;
 constexpr float kShieldBashCooldown = 0.5f;
+
+// Skewer Spear (melee, alt to Sword: thrust instead of a sweep)
+constexpr float kSpearRange = 118.0f;
+constexpr float kSpearArcDeg = 34.0f;
+constexpr float kSpearDamage = 46.0f;
+constexpr float kSpearKnockback = 620.0f;
+constexpr float kSpearThrustDuration = 0.22f;
+constexpr float kSpearCooldown = 0.62f;
+
+// Salsa Scattershot (ranged, alt to Blaster: semi-auto pellet fan)
+constexpr int   kScattershotPelletCount = 6;
+constexpr float kScattershotSpreadDeg = 20.0f;
+constexpr float kScattershotBulletSpeed = 700.0f;
+constexpr float kScattershotBulletDamage = 10.0f;
+constexpr float kScattershotBulletRadius = 4.0f;
+constexpr float kScattershotBulletLife = 0.45f; // short life = falls off hard at range
+constexpr int   kScattershotMagazine = 5;
+constexpr float kScattershotReloadTime = 1.4f;
+constexpr float kScattershotCooldown = 0.55f;
+
+// Habanero Handful (explosive, alt to Bomb: fan of 3 mini bombs)
+constexpr int   kHabaneroBombCount = 3;
+constexpr float kHabaneroFanSpreadDeg = 22.0f;
+constexpr float kHabaneroThrowSpeed = 560.0f;
+constexpr float kHabaneroFuse = 0.9f;
+constexpr float kHabaneroBlastRadius = 80.0f;
+constexpr float kHabaneroDamage = 46.0f;
+constexpr float kHabaneroCooldown = 2.6f;
+
+// Fondue Fork (defense, alt to Shield: full-negation parry, no guard meter)
+constexpr float kForkParryWindow = 0.22f;     // time after activating the parry actually blocks
+constexpr float kForkParryCooldown = 1.6f;
+constexpr float kForkBashRange = 56.0f;
+constexpr float kForkBashArcDeg = 90.0f;
+constexpr float kForkBashDamage = 18.0f;
+constexpr float kForkBashKnockback = 600.0f;
+constexpr float kForkBashCooldown = 0.45f;
 
 // ---------------------------------------------------------------------------
 // Projectile pool
@@ -200,6 +293,23 @@ constexpr float kInvincibilityDuration = 8.0f;
 constexpr float kBerserkDamageMult = 2.0f;
 constexpr float kDoublePointsMult = 2.0f;
 
+// Kill-drop odds for the itemization loot pool (ammo/armor mixed in
+// alongside health/power-ups; see PickupManager::RollAndSpawnDrop).
+constexpr float kAmmoDropShare = 0.18f;
+constexpr float kArmorDropShare = 0.10f;
+constexpr float kLightArmorReduction = 0.15f;
+constexpr float kHeavyArmorReduction = 0.30f;
+
+// ---------------------------------------------------------------------------
+// Shrinking safe zone (boss rooms only): forces a decisive fight instead of
+// endless kiting. Only the player takes zone damage, matching genre
+// convention (bosses aren't punished for standing outside it).
+// ---------------------------------------------------------------------------
+constexpr float kZoneShrinkDuration = 55.0f;
+constexpr float kZoneStartRadiusFrac = 0.46f; // fraction of room's shorter dimension
+constexpr float kZoneMinRadius = 170.0f;
+constexpr float kZoneDamagePerSec = 16.0f;
+
 // ---------------------------------------------------------------------------
 // Difficulty
 // ---------------------------------------------------------------------------
@@ -218,6 +328,15 @@ constexpr float kDefaultSfxVolume = 0.7f;
 constexpr float kHazardDamagePerSec = 24.0f;
 
 // ---------------------------------------------------------------------------
+// Obstacles: enemies have no real pathfinding (straight-line-to-player only),
+// so this is a soft steering nudge away from nearby obstacles applied on top
+// of their normal AI velocity, not true avoidance. Enough to curve around a
+// rock instead of stalling against it.
+// ---------------------------------------------------------------------------
+constexpr float kObstacleAvoidRadius = 50.0f; // extra range beyond the obstacle's own radius
+constexpr float kObstacleAvoidForce = 260.0f;
+
+// ---------------------------------------------------------------------------
 // Juice: hit-stop & combo
 // ---------------------------------------------------------------------------
 constexpr float kHitStopHeavy = 0.05f;   // bomb/boss slam
@@ -231,11 +350,25 @@ constexpr float kComboMultiplierCap = 3.0f;
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
-enum class WeaponType { CelerySword = 0, ChurroBlaster = 1, BurritoBomb = 2, NachoShield = 3, Count };
-enum class EnemyType { GlazedChaser, TwistCharger, CheddarShooter, BossBruiser, BossCaster };
+enum class WeaponType {
+    CelerySword = 0, ChurroBlaster = 1, BurritoBomb = 2, NachoShield = 3,
+    SkewerSpear = 4, SalsaScattershot = 5, HabaneroHandful = 6, FondueFork = 7,
+    Count
+};
+enum class EnemyType {
+    GlazedChaser, TwistCharger, CheddarShooter, PickleSplitter, SodaBomber,
+    BossBruiser, BossCaster, BossBurrower, BossFrost,
+};
 enum class GameState { LevelIntro, Playing, LevelComplete, GameOver, Victory };
 enum class Difficulty { Easy, Normal, Hard };
 enum class PowerUpType { InstaKill, DoublePoints, MaxAmmo, Nuke, RapidFire, Berserk, Invincibility, Count };
+
+// Terrain theme for a level: drives floor palette and default obstacle
+// dressing (see Game.cpp's DrawRoom and Level.cpp's per-biome obstacle sets).
+enum class Biome { Grass, Desert, Lava, Ice };
+
+// What an Obstacle renders as; picked per-biome in Level.cpp.
+enum class ObstacleKind { Rock, Crate, Tree, Bush, Cactus, IceCrystal, Table, Shelf, Counter, MeatRack };
 
 // ---------------------------------------------------------------------------
 // Difficulty tuning: multipliers applied on top of every base stat. Picked
@@ -262,6 +395,34 @@ inline const char* DifficultyName(Difficulty d) {
         case Difficulty::Easy: return "EASY";
         case Difficulty::Hard: return "HARD";
         default: return "NORMAL";
+    }
+}
+
+inline const char* WeaponTypeLabel(WeaponType t) {
+    switch (t) {
+        case WeaponType::CelerySword: return "CELERY SWORD";
+        case WeaponType::ChurroBlaster: return "CHURRO BLASTER";
+        case WeaponType::BurritoBomb: return "BURRITO BOMB";
+        case WeaponType::NachoShield: return "NACHO SHIELD";
+        case WeaponType::SkewerSpear: return "SKEWER SPEAR";
+        case WeaponType::SalsaScattershot: return "SALSA SCATTERSHOT";
+        case WeaponType::HabaneroHandful: return "HABANERO HANDFUL";
+        case WeaponType::FondueFork: return "FONDUE FORK";
+        default: return "";
+    }
+}
+
+inline Color WeaponTypeColor(WeaponType t) {
+    switch (t) {
+        case WeaponType::CelerySword: return Color{140, 220, 90, 255};
+        case WeaponType::ChurroBlaster: return Color{255, 200, 90, 255};
+        case WeaponType::BurritoBomb: return Color{255, 140, 60, 255};
+        case WeaponType::NachoShield: return Color{120, 190, 230, 255};
+        case WeaponType::SkewerSpear: return Color{210, 210, 220, 255};
+        case WeaponType::SalsaScattershot: return Color{230, 70, 60, 255};
+        case WeaponType::HabaneroHandful: return Color{200, 60, 30, 255};
+        case WeaponType::FondueFork: return Color{90, 210, 190, 255};
+        default: return WHITE;
     }
 }
 
@@ -387,6 +548,20 @@ struct ComboTracker {
 };
 
 // ---------------------------------------------------------------------------
+// Small shared rendering helpers.
+// ---------------------------------------------------------------------------
+namespace fx {
+
+// Soft flattened shadow beneath a circular entity so it reads as standing on
+// the floor rather than floating over it.
+inline void DrawGroundShadow(Vector2 pos, float radius) {
+    DrawEllipse(static_cast<int>(pos.x), static_cast<int>(pos.y + radius * 0.55f),
+                radius * 0.9f, radius * 0.35f, Fade(BLACK, 0.35f));
+}
+
+}  // namespace fx
+
+// ---------------------------------------------------------------------------
 // Math helpers
 // ---------------------------------------------------------------------------
 namespace mathutil {
@@ -419,6 +594,19 @@ inline Vector2 ClampToRoom(Vector2 p, float radius, Rectangle bounds) {
     p.x = Clamp(p.x, bounds.x + radius, bounds.x + bounds.width - radius);
     p.y = Clamp(p.y, bounds.y + radius, bounds.y + bounds.height - radius);
     return p;
+}
+
+// Pushes a circle at `pos` (radius `radius`) out of a circular obstacle at
+// `obstacleCenter`/`obstacleRadius` if it's overlapping; returns `pos`
+// unchanged otherwise. Used for both the player and enemies against room
+// scenery (see Room::obstacles).
+inline Vector2 ResolveCircleObstacle(Vector2 pos, float radius, Vector2 obstacleCenter, float obstacleRadius) {
+    Vector2 diff = Vector2Subtract(pos, obstacleCenter);
+    float dist = Vector2Length(diff);
+    float minDist = radius + obstacleRadius;
+    if (dist >= minDist) return pos;
+    Vector2 dir = dist > 0.0001f ? Vector2Scale(diff, 1.0f / dist) : Vector2{0.0f, -1.0f};
+    return Vector2Add(obstacleCenter, Vector2Scale(dir, minDist));
 }
 
 // Inverse-square knockback impulse for a blast at `origin` hitting a point

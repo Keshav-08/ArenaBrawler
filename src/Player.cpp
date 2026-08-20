@@ -32,13 +32,18 @@ void Player::Update(float dt, Rectangle bounds) {
         dashTimer_ -= dt;
         velocity = Vector2Scale(dashDirection_, cfg::kDashSpeed);
     } else {
+        // Slowed (BossFrost's ice nova) reduces both accel and top speed; a
+        // dash still moves at full speed, giving the player a way to shake it.
+        float slowMult = IsSlowed() ? cfg::kSlowSpeedMult : 1.0f;
+
         // Accelerate towards desired direction, then apply exponential damping (friction).
-        Vector2 accel = Vector2Scale(moveInput_, cfg::kPlayerAcceleration);
+        Vector2 accel = Vector2Scale(moveInput_, cfg::kPlayerAcceleration * slowMult);
         velocity = Vector2Add(velocity, Vector2Scale(accel, dt));
 
         float speed = Vector2Length(velocity);
-        if (speed > cfg::kPlayerMaxSpeed) {
-            velocity = Vector2Scale(velocity, cfg::kPlayerMaxSpeed / speed);
+        float maxSpeed = cfg::kPlayerMaxSpeed * slowMult;
+        if (speed > maxSpeed) {
+            velocity = Vector2Scale(velocity, maxSpeed / speed);
         }
 
         float damping = 1.0f / (1.0f + cfg::kPlayerFriction * dt);
@@ -54,12 +59,13 @@ void Player::Update(float dt, Rectangle bounds) {
     if (dashIFrameTimer_ > 0.0f) dashIFrameTimer_ -= dt;
     if (contactIFrameTimer_ > 0.0f) contactIFrameTimer_ -= dt;
     if (hitFlashTimer_ > 0.0f) hitFlashTimer_ -= dt;
+    if (slowTimer_ > 0.0f) slowTimer_ -= dt;
     if (powerUpInvincibleTimer_ > 0.0f) powerUpInvincibleTimer_ -= dt;
 }
 
 bool Player::ApplyContactDamage(float dmg) {
     if (!alive || IsInvulnerable()) return false;
-    TakeDamage(dmg);
+    TakeDamage(dmg * (1.0f - armorReduction_));
     contactIFrameTimer_ = cfg::kContactIFrames;
     hitFlashTimer_ = 0.15f;
     return true;
@@ -70,9 +76,15 @@ float Player::DashCooldownFrac() const {
 }
 
 void Player::Draw() const {
+    fx::DrawGroundShadow(position, radius);
+
     Color body = DARKGREEN;
     if (hitFlashTimer_ > 0.0f) body = RED;
     else if (IsInvulnerable()) body = ColorAlpha(DARKGREEN, 0.55f);
+
+    if (IsSlowed()) {
+        DrawCircleLines(static_cast<int>(position.x), static_cast<int>(position.y), radius + 5.0f, Fade(SKYBLUE, 0.7f));
+    }
 
     if (IsPowerUpInvincible()) {
         float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 10.0f);
@@ -81,6 +93,11 @@ void Player::Draw() const {
     }
 
     DrawCircleV(position, radius, body);
+    if (armorReduction_ >= cfg::kHeavyArmorReduction) {
+        DrawCircleLines(static_cast<int>(position.x), static_cast<int>(position.y), radius + 2.0f, Color{160, 170, 200, 255});
+    } else if (armorReduction_ >= cfg::kLightArmorReduction) {
+        DrawCircleLines(static_cast<int>(position.x), static_cast<int>(position.y), radius + 2.0f, Color{140, 150, 170, 200});
+    }
     DrawCircleLines(static_cast<int>(position.x), static_cast<int>(position.y), radius, Fade(BLACK, 0.6f));
 
     // Directional indicator (aim facing).

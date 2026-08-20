@@ -1,7 +1,7 @@
 #include "LevelManager.hpp"
 #include <utility>
 
-void LevelManager::LoadLevel(int index) {
+void LevelManager::LoadLevel(int index, PickupManager& pickups) {
     levelIndex_ = index;
     level_ = MakeLevel(index);
     activeRoomIndex_ = -1;
@@ -10,16 +10,16 @@ void LevelManager::LoadLevel(int index) {
     aliveCount_ = 0;
     interWaveTimer_ = 0.0f;
     levelJustCompleted_ = false;
-    ActivateRoom(0);
+    ActivateRoom(0, pickups);
     activeRoomIndex_ = 0;
     aliveCount_ = static_cast<int>(enemies_.size());
 }
 
-void LevelManager::StartGame() { LoadLevel(0); }
+void LevelManager::StartGame(PickupManager& pickups) { LoadLevel(0, pickups); }
 
 bool LevelManager::HasNextLevel() const { return levelIndex_ + 1 < kLevelCount; }
 
-void LevelManager::AdvanceToNextLevel() { LoadLevel(levelIndex_ + 1); }
+void LevelManager::AdvanceToNextLevel(PickupManager& pickups) { LoadLevel(levelIndex_ + 1, pickups); }
 
 int LevelManager::ComputeRoomIndexForX(float x) const {
     for (size_t i = 0; i < level_.rooms.size(); ++i) {
@@ -31,16 +31,21 @@ int LevelManager::ComputeRoomIndexForX(float x) const {
     return 0;
 }
 
-void LevelManager::ActivateRoom(int index) {
+void LevelManager::ActivateRoom(int index, PickupManager& pickups) {
     Room& room = level_.rooms[index];
     if (room.entered) return;
     room.entered = true;
+
+    for (const LootSpawn& loot : room.lootSpawns) {
+        pickups.SpawnWeaponLoot(Vector2{room.bounds.x + loot.center.x, room.bounds.y + loot.center.y}, loot.weapon);
+    }
 
     if (room.isBossRoom) {
         Vector2 center{room.bounds.x + room.bounds.width * 0.5f, room.bounds.y + room.bounds.height * 0.5f};
         auto boss = MakeBoss(room.bossType, center, tuning_.enemyStatMult);
         activeBoss_ = static_cast<Boss*>(boss.get());
         bossWasPhase2_ = false;
+        room.zoneTimer = 0.0f;
         enemies_.push_back(std::move(boss));
     } else {
         SpawnNextSubWave(room);
@@ -102,10 +107,18 @@ void LevelManager::Update(float dt, Player& player, ParticleSystem& particles, P
                            ScreenShake& shake, PickupManager& pickups, AudioManager& audio, bool playerBlocking) {
     levelJustCompleted_ = false;
 
+    // Flush spawns queued by kill-resolution sites last frame/earlier this
+    // frame (e.g. PickleSplitter's children) — deferred so nothing mutates
+    // `enemies_` while another loop is iterating over it.
+    for (const PendingSpawn& s : pendingExternalSpawns_) {
+        enemies_.push_back(MakeEnemy(s.type, s.pos, false, 1.0f, s.isChild));
+    }
+    pendingExternalSpawns_.clear();
+
     int newIdx = ComputeRoomIndexForX(player.position.x);
     if (newIdx != activeRoomIndex_) activeRoomIndex_ = newIdx;
     Room& room = level_.rooms[activeRoomIndex_];
-    if (!room.entered) ActivateRoom(activeRoomIndex_);
+    if (!room.entered) ActivateRoom(activeRoomIndex_, pickups);
 
     Rectangle playArea = room.PlayArea();
 
@@ -114,7 +127,26 @@ void LevelManager::Update(float dt, Player& player, ParticleSystem& particles, P
     for (auto& e : enemies_) {
         if (!e->IsAlive()) continue;
         e->UpdateAI(dt, player.position, enemies_, projectiles);
+
+        // Soft steering away from nearby obstacles (no real pathfinding —
+        // just enough to curve around a rock instead of stalling on it).
+        for (const Obstacle& obs : room.obstacles) {
+            Vector2 obsCenter{room.bounds.x + obs.center.x, room.bounds.y + obs.center.y};
+            Vector2 diff = Vector2Subtract(e->position, obsCenter);
+            float dist = Vector2Length(diff);
+            float avoidRange = obs.radius + cfg::kObstacleAvoidRadius;
+            if (dist < avoidRange && dist > 0.0001f) {
+                float strength = (avoidRange - dist) / avoidRange;
+                e->velocity = Vector2Add(e->velocity, Vector2Scale(Vector2Scale(diff, 1.0f / dist), strength * cfg::kObstacleAvoidForce));
+            }
+        }
+
         e->Update(dt, playArea);
+
+        for (const Obstacle& obs : room.obstacles) {
+            Vector2 obsCenter{room.bounds.x + obs.center.x, room.bounds.y + obs.center.y};
+            e->position = mathutil::ResolveCircleObstacle(e->position, e->radius, obsCenter, obs.radius);
+        }
 
         float dist = Vector2Distance(e->position, player.position);
         if (dist < e->radius + player.radius) {
@@ -139,7 +171,10 @@ void LevelManager::Update(float dt, Player& player, ParticleSystem& particles, P
             float pdist = Vector2Distance(player.position, aoe.origin);
             if (pdist < aoe.radius) {
                 float falloff = 1.0f - mathutil::Clamp01(pdist / aoe.radius);
-                if (player.ApplyContactDamage(aoe.damage * falloff)) audio.Play(Sfx::PlayerHurt, 0.9f, 0.1f);
+                if (player.ApplyContactDamage(aoe.damage * falloff)) {
+                    audio.Play(Sfx::PlayerHurt, 0.9f, 0.1f);
+                    if (aoe.slowDuration > 0.0f) player.ApplySlow(aoe.slowDuration);
+                }
                 player.velocity = Vector2Add(player.velocity, mathutil::RadialImpulse(player.position, aoe.origin, aoe.impulseStrength, dt));
             }
         }
@@ -160,6 +195,20 @@ void LevelManager::Update(float dt, Player& player, ParticleSystem& particles, P
         pendingHitStop_ = std::max(pendingHitStop_, cfg::kHitStopHeavy);
         shake.Trigger(0.3f, 10.0f);
         audio.Play(Sfx::BossPhase2);
+    }
+
+    // Shrinking safe zone (boss rooms only): forces a decisive fight instead
+    // of endless kiting around the arena edges. Only the player is punished
+    // for standing outside it, matching genre convention.
+    if (room.isBossRoom && room.entered && !room.cleared) {
+        room.zoneTimer += dt;
+        float radius = CurrentZoneRadius();
+        Vector2 center = CurrentZoneCenter();
+        if (Vector2Distance(player.position, center) > radius) {
+            if (player.ApplyContactDamage(cfg::kZoneDamagePerSec * cfg::kContactIFrames)) {
+                audio.Play(Sfx::PlayerHurt, 0.5f, 0.15f);
+            }
+        }
     }
 
     // Hazard zones: enemies take steady damage; the player is gated by its
@@ -185,6 +234,12 @@ void LevelManager::Update(float dt, Player& player, ParticleSystem& particles, P
         if (!(*it)->IsAlive()) {
             if (activeBoss_ == it->get()) activeBoss_ = nullptr;
             pickups.RollAndSpawnDrop((*it)->position);
+            if ((*it)->SplitsOnDeath()) {
+                Vector2 deathPos = (*it)->position;
+                Vector2 offset = mathutil::FromAngle(mathutil::RandomFloat(0.0f, 2.0f * PI), cfg::kPickleSplitterSplitOffset);
+                QueueSpawn(EnemyType::PickleSplitter, Vector2Add(deathPos, offset), true);
+                QueueSpawn(EnemyType::PickleSplitter, Vector2Subtract(deathPos, offset), true);
+            }
             it = enemies_.erase(it);
         } else {
             ++it;
@@ -226,6 +281,23 @@ float LevelManager::ConsumeHitStopRequest() {
     float v = pendingHitStop_;
     pendingHitStop_ = 0.0f;
     return v;
+}
+
+bool LevelManager::HasActiveZone() const {
+    const Room& room = level_.rooms[activeRoomIndex_];
+    return room.isBossRoom && room.entered && !room.cleared;
+}
+
+float LevelManager::CurrentZoneRadius() const {
+    const Room& room = level_.rooms[activeRoomIndex_];
+    float startRadius = std::min(room.bounds.width, room.bounds.height) * cfg::kZoneStartRadiusFrac;
+    float t = mathutil::Clamp01(room.zoneTimer / cfg::kZoneShrinkDuration);
+    return startRadius + (cfg::kZoneMinRadius - startRadius) * t;
+}
+
+Vector2 LevelManager::CurrentZoneCenter() const {
+    const Room& room = level_.rooms[activeRoomIndex_];
+    return Vector2{room.bounds.x + room.bounds.width * 0.5f, room.bounds.y + room.bounds.height * 0.5f};
 }
 
 float LevelManager::BossHealthFrac() const {

@@ -24,6 +24,16 @@ public:
     void GrantInvincibility(float duration) { powerUpInvincibleTimer_ = duration; }
     bool IsPowerUpInvincible() const { return powerUpInvincibleTimer_ > 0.0f; }
 
+    // BossFrost's ice nova: temporarily halves movement speed.
+    void ApplySlow(float duration) { slowTimer_ = std::max(slowTimer_, duration); }
+    bool IsSlowed() const { return slowTimer_ > 0.0f; }
+
+    // Armor loot: flat damage reduction against everything ApplyContactDamage
+    // resolves (contact hits, hostile bullets, boss AoE, hazards). Only
+    // upgrades — picking up a weaker tier than what's equipped is a no-op.
+    void EquipArmor(float reduction) { armorReduction_ = std::max(armorReduction_, reduction); }
+    float ArmorReduction() const { return armorReduction_; }
+
     bool IsInvulnerable() const {
         return dashIFrameTimer_ > 0.0f || contactIFrameTimer_ > 0.0f || powerUpInvincibleTimer_ > 0.0f;
     }
@@ -51,5 +61,7 @@ private:
     float contactIFrameTimer_ = 0.0f;
     float hitFlashTimer_ = 0.0f;
     float powerUpInvincibleTimer_ = 0.0f;
+    float slowTimer_ = 0.0f;
+    float armorReduction_ = 0.0f;
     bool justDashed_ = false;
 };

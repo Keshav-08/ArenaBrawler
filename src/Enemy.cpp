@@ -7,16 +7,42 @@ Enemy::Enemy(EnemyType type, Vector2 pos, float radius, float health, float spee
     : Entity(pos, radius, health), speed(speed), contactDamage(damage), type_(type) {}
 
 void Enemy::Update(float dt, Rectangle bounds) {
-    position = Vector2Add(position, Vector2Scale(velocity, dt));
+    Vector2 moveVelocity = IsSlowed() ? Vector2Scale(velocity, cfg::kSlowSpeedMult) : velocity;
+    position = Vector2Add(position, Vector2Scale(moveVelocity, dt));
     position = mathutil::ClampToRoom(position, radius, bounds);
     if (contactCooldownTimer_ > 0.0f) contactCooldownTimer_ -= dt;
     if (markedTimer_ > 0.0f) markedTimer_ -= dt;
+    if (slowTimer_ > 0.0f) slowTimer_ -= dt;
 }
 
 float Enemy::TryContactDamage() {
     if (contactCooldownTimer_ > 0.0f) return 0.0f;
     contactCooldownTimer_ = cfg::kEnemyContactCooldown;
     return contactDamage;
+}
+
+bool Enemy::ConsumeAoeRequest(AoeRequest& out) {
+    if (!hasAoeRequest_) return false;
+    out = aoeRequest_;
+    hasAoeRequest_ = false;
+    return true;
+}
+
+bool Enemy::ConsumeSummonRequest(SummonRequest& out) {
+    if (!hasSummonRequest_) return false;
+    out = summonRequest_;
+    hasSummonRequest_ = false;
+    return true;
+}
+
+void Enemy::RequestAoe(Vector2 origin, float radius, float damage, float impulseStrength, float slowDuration) {
+    aoeRequest_ = AoeRequest{origin, radius, damage, impulseStrength, slowDuration};
+    hasAoeRequest_ = true;
+}
+
+void Enemy::RequestSummon(EnemyType type, Vector2 pos) {
+    summonRequest_ = SummonRequest{type, pos};
+    hasSummonRequest_ = true;
 }
 
 void Enemy::MakeElite() {
@@ -46,6 +72,7 @@ void Enemy::DrawEliteRing() const {
 }
 
 void Enemy::Draw() const {
+    fx::DrawGroundShadow(position, radius);
     DrawCircleV(position, radius, MAROON);
 }
 
@@ -87,6 +114,7 @@ void GlazedChaser::UpdateAI(float dt, Vector2 playerPos, const std::vector<std::
 }
 
 void GlazedChaser::Draw() const {
+    fx::DrawGroundShadow(position, radius);
     DrawCircleV(position, radius, EliteTint(Color{255, 200, 80, 255}));
     DrawCircleLines(static_cast<int>(position.x), static_cast<int>(position.y), radius, Fade(BLACK, 0.5f));
     if (Vector2LengthSqr(velocity) > 1.0f) {
@@ -151,6 +179,7 @@ void TwistCharger::UpdateAI(float dt, Vector2 playerPos, const std::vector<std::
 }
 
 void TwistCharger::Draw() const {
+    fx::DrawGroundShadow(position, radius);
     Color body = Color{150, 90, 200, 255};
     if (state_ == State::Telegraph) {
         // Flash to warn the player a charge is imminent.
@@ -207,6 +236,7 @@ void CheddarShooter::UpdateAI(float dt, Vector2 playerPos, const std::vector<std
 }
 
 void CheddarShooter::Draw() const {
+    fx::DrawGroundShadow(position, radius);
     DrawCircleV(position, radius, EliteTint(Color{255, 235, 120, 255}));
     DrawCircleLines(static_cast<int>(position.x), static_cast<int>(position.y), radius, Fade(BLACK, 0.6f));
     if (Vector2LengthSqr(velocity) > 1.0f) {
@@ -218,14 +248,93 @@ void CheddarShooter::Draw() const {
 }
 
 // ---------------------------------------------------------------------------
+// PickleSplitter
+// ---------------------------------------------------------------------------
+PickleSplitter::PickleSplitter(Vector2 pos, bool isChild)
+    : Enemy(EnemyType::PickleSplitter, pos,
+            isChild ? cfg::kPickleSplitterRadius * cfg::kPickleSplitterChildSizeMult : cfg::kPickleSplitterRadius,
+            isChild ? cfg::kPickleSplitterHealth * cfg::kPickleSplitterChildHealthMult : cfg::kPickleSplitterHealth,
+            isChild ? cfg::kPickleSplitterSpeed * cfg::kPickleSplitterChildSpeedMult : cfg::kPickleSplitterSpeed,
+            isChild ? cfg::kPickleSplitterDamage * cfg::kPickleSplitterChildDamageMult : cfg::kPickleSplitterDamage),
+      isChild_(isChild) {}
+
+void PickleSplitter::UpdateAI(float dt, Vector2 playerPos, const std::vector<std::unique_ptr<Enemy>>& all,
+                               ProjectileManager& projectiles) {
+    (void)dt;
+    (void)all;
+    (void)projectiles;
+    Vector2 toPlayer = Vector2Subtract(playerPos, position);
+    velocity = Vector2LengthSqr(toPlayer) > 0.0001f ? Vector2Scale(Vector2Normalize(toPlayer), speed) : Vector2{0, 0};
+}
+
+void PickleSplitter::Draw() const {
+    fx::DrawGroundShadow(position, radius);
+    Color body = isChild_ ? Color{150, 205, 95, 255} : Color{90, 160, 60, 255};
+    DrawCircleV(position, radius, EliteTint(body));
+    DrawCircleLines(static_cast<int>(position.x), static_cast<int>(position.y), radius, Fade(BLACK, 0.6f));
+    DrawCircleV(Vector2{position.x - radius * 0.3f, position.y}, radius * 0.12f, Fade(BLACK, 0.4f));
+    DrawCircleV(Vector2{position.x + radius * 0.3f, position.y - radius * 0.2f}, radius * 0.12f, Fade(BLACK, 0.4f));
+    DrawEliteRing();
+}
+
+// ---------------------------------------------------------------------------
+// SodaBomber
+// ---------------------------------------------------------------------------
+SodaBomber::SodaBomber(Vector2 pos)
+    : Enemy(EnemyType::SodaBomber, pos, cfg::kSodaBomberRadius, cfg::kSodaBomberHealth,
+            cfg::kSodaBomberSpeed, cfg::kSodaBomberDamage) {}
+
+void SodaBomber::UpdateAI(float dt, Vector2 playerPos, const std::vector<std::unique_ptr<Enemy>>& all,
+                           ProjectileManager& projectiles) {
+    (void)all;
+    (void)projectiles;
+    Vector2 toPlayer = Vector2Subtract(playerPos, position);
+    float dist = Vector2Length(toPlayer);
+
+    if (triggered_) {
+        velocity = Vector2{0, 0};
+        fuseTimer_ -= dt;
+        if (fuseTimer_ <= 0.0f) {
+            RequestAoe(position, cfg::kSodaBomberBlastRadius, cfg::kSodaBomberBlastDamage, cfg::kSodaBomberBlastImpulse);
+            TakeDamage(health + 1.0f); // self-destruct once the fuse runs out
+        }
+        return;
+    }
+
+    if (dist < cfg::kSodaBomberTriggerRange) {
+        triggered_ = true;
+        fuseTimer_ = cfg::kSodaBomberFuse;
+        velocity = Vector2{0, 0};
+        return;
+    }
+
+    velocity = dist > 0.0001f ? Vector2Scale(Vector2Normalize(toPlayer), speed) : Vector2{0, 0};
+}
+
+void SodaBomber::Draw() const {
+    fx::DrawGroundShadow(position, radius);
+    Color body = Color{200, 70, 50, 255};
+    if (triggered_) {
+        float t = std::fmod(GetTime(), 0.1) < 0.05 ? 1.0f : 0.4f;
+        body = ColorAlpha(RED, 0.5f + 0.5f * t);
+        DrawCircleLines(static_cast<int>(position.x), static_cast<int>(position.y), cfg::kSodaBomberBlastRadius, Fade(ORANGE, 0.35f));
+    }
+    DrawCircleV(position, radius, EliteTint(body));
+    DrawCircleLines(static_cast<int>(position.x), static_cast<int>(position.y), radius, Fade(BLACK, 0.6f));
+    DrawEliteRing();
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
-std::unique_ptr<Enemy> MakeEnemy(EnemyType type, Vector2 pos, bool elite, float statMult) {
+std::unique_ptr<Enemy> MakeEnemy(EnemyType type, Vector2 pos, bool elite, float statMult, bool isChild) {
     std::unique_ptr<Enemy> enemy;
     switch (type) {
         case EnemyType::GlazedChaser: enemy = std::make_unique<GlazedChaser>(pos); break;
         case EnemyType::TwistCharger: enemy = std::make_unique<TwistCharger>(pos); break;
         case EnemyType::CheddarShooter: enemy = std::make_unique<CheddarShooter>(pos); break;
+        case EnemyType::PickleSplitter: enemy = std::make_unique<PickleSplitter>(pos, isChild); break;
+        case EnemyType::SodaBomber: enemy = std::make_unique<SodaBomber>(pos); break;
         default: return nullptr; // bosses are constructed directly by LevelManager, not via this factory
     }
     if (elite) enemy->MakeElite();

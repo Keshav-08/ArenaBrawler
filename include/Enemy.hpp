@@ -24,6 +24,12 @@ public:
     EnemyType Type() const { return type_; }
     virtual bool IsBoss() const { return false; }
 
+    // Freeze weapon (Zombies Mode): mirrors Player::ApplySlow in the other
+    // direction. Purely additive — no effect unless something calls it, so
+    // Story Mode's behavior is unchanged.
+    void ApplySlow(float duration) { slowTimer_ = std::max(slowTimer_, duration); }
+    bool IsSlowed() const { return slowTimer_ > 0.0f; }
+
     // Multiplies health/contactDamage in place (used for both elite variants
     // and difficulty scaling; safe to call more than once, effects stack).
     void ScaleStats(float mult) {
@@ -48,14 +54,25 @@ public:
     void MarkForBonus(float duration) { markedTimer_ = duration; }
     bool IsMarked() const { return markedTimer_ > 0.0f; }
 
-    // Boss attacks that need systems UpdateAI doesn't have direct access to
+    // Attacks that need systems UpdateAI doesn't have direct access to
     // (radial player damage, minion summons) queue a request here instead;
-    // LevelManager polls every enemy generically after the AI tick so this
-    // doesn't need a Boss-specific downcast. No-ops for regular minions.
-    struct AoeRequest { Vector2 origin; float radius; float damage; float impulseStrength; };
+    // LevelManager polls every enemy generically after the AI tick, so
+    // spawning one doesn't need a subclass-specific downcast. Originally
+    // boss-only, but any enemy can use these (e.g. SodaBomber's detonation).
+    struct AoeRequest {
+        Vector2 origin;
+        float radius;
+        float damage;
+        float impulseStrength;
+        float slowDuration = 0.0f; // >0 also applies Player::ApplySlow on hit
+    };
     struct SummonRequest { EnemyType type; Vector2 pos; };
-    virtual bool ConsumeAoeRequest(AoeRequest&) { return false; }
-    virtual bool ConsumeSummonRequest(SummonRequest&) { return false; }
+    bool ConsumeAoeRequest(AoeRequest& out);
+    bool ConsumeSummonRequest(SummonRequest& out);
+
+    // Splitter minions (PickleSplitter) override this to spawn weaker copies
+    // at their death position; checked at every kill-resolution site.
+    virtual bool SplitsOnDeath() const { return false; }
 
     float speed;
     float contactDamage;
@@ -63,11 +80,20 @@ public:
 protected:
     Color EliteTint(Color base) const;
     void DrawEliteRing() const;
+    void RequestAoe(Vector2 origin, float radius, float damage, float impulseStrength, float slowDuration = 0.0f);
+    void RequestSummon(EnemyType type, Vector2 pos);
 
     EnemyType type_;
     float contactCooldownTimer_ = 0.0f;
     bool elite_ = false;
     float markedTimer_ = 0.0f;
+    float slowTimer_ = 0.0f;
+
+private:
+    bool hasAoeRequest_ = false;
+    AoeRequest aoeRequest_{};
+    bool hasSummonRequest_ = false;
+    SummonRequest summonRequest_{};
 };
 
 // Fast swarm minion. Chases the player directly, with boids-style separation
@@ -108,7 +134,39 @@ private:
     float fireTimer_ = cfg::kCheddarShooterFireInterval * 0.5f; // stagger first shot
 };
 
+// Splitter minion: chases like a GlazedChaser; on death (if not already a
+// child) queues two weaker copies at its death position via
+// LevelManager::QueueSpawn (see kill-resolution sites in Weapon.hpp/Game.cpp).
+class PickleSplitter : public Enemy {
+public:
+    explicit PickleSplitter(Vector2 pos, bool isChild = false);
+    void UpdateAI(float dt, Vector2 playerPos, const std::vector<std::unique_ptr<Enemy>>& all,
+                  ProjectileManager& projectiles) override;
+    void Draw() const override;
+    bool SplitsOnDeath() const override { return !isChild_; }
+
+private:
+    bool isChild_;
+};
+
+// Suicide rusher: beelines for the player faster than anything else, deals
+// no ordinary contact damage, and detonates (radial AoE via RequestAoe) the
+// moment it closes to point-blank range.
+class SodaBomber : public Enemy {
+public:
+    explicit SodaBomber(Vector2 pos);
+    void UpdateAI(float dt, Vector2 playerPos, const std::vector<std::unique_ptr<Enemy>>& all,
+                  ProjectileManager& projectiles) override;
+    void Draw() const override;
+
+private:
+    bool triggered_ = false;
+    float fuseTimer_ = 0.0f;
+};
+
 // Factory helper used by LevelManager. `elite` upgrades stats and marks the
 // enemy for tinted rendering / bigger death FX; `statMult` additionally
-// scales health/damage for difficulty tuning (applied after elite scaling).
-std::unique_ptr<Enemy> MakeEnemy(EnemyType type, Vector2 pos, bool elite = false, float statMult = 1.0f);
+// scales health/damage for difficulty tuning (applied after elite scaling);
+// `isChild` is only meaningful for PickleSplitter (see QueueSpawn).
+std::unique_ptr<Enemy> MakeEnemy(EnemyType type, Vector2 pos, bool elite = false, float statMult = 1.0f,
+                                  bool isChild = false);

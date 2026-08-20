@@ -7,7 +7,7 @@ Projectile* ProjectileManager::AcquireSlot() {
     return nullptr; // pool exhausted; drop the spawn request
 }
 
-void ProjectileManager::SpawnBullet(Vector2 pos, Vector2 vel, float damage, float radius, float life, bool hostile) {
+void ProjectileManager::SpawnBullet(Vector2 pos, Vector2 vel, float damage, float radius, float life, bool hostile, float slowDuration) {
     Projectile* p = AcquireSlot();
     if (!p) return;
     *p = Projectile{};
@@ -18,6 +18,7 @@ void ProjectileManager::SpawnBullet(Vector2 pos, Vector2 vel, float damage, floa
     p->radius = radius;
     p->life = life;
     p->hostile = hostile;
+    p->slowDuration = slowDuration;
     p->active = true;
 }
 

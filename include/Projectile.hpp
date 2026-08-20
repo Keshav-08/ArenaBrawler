@@ -17,6 +17,7 @@ struct Projectile {
     float fuse = 0.0f;      // bombs only: time until detonation
     float blastRadius = 0.0f; // bombs only
     bool hostile = false;   // bullets only: true for enemy/boss shots, resolved against the player instead of enemies
+    float slowDuration = 0.0f; // bullets only: Zombies Mode's Freeze weapon; 0 = no slow effect
     bool active = false;
 };
 
@@ -32,7 +33,7 @@ struct Explosion {
 // this class stays decoupled from Enemy.
 class ProjectileManager {
 public:
-    void SpawnBullet(Vector2 pos, Vector2 vel, float damage, float radius, float life, bool hostile = false);
+    void SpawnBullet(Vector2 pos, Vector2 vel, float damage, float radius, float life, bool hostile = false, float slowDuration = 0.0f);
     void SpawnBomb(Vector2 pos, Vector2 vel, float damage, float blastRadius, float fuse);
 
     // Advances all active projectiles, culls out-of-bounds/expired bullets,

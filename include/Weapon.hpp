@@ -45,12 +45,19 @@ public:
     const std::string& Name() const { return name_; }
 
 protected:
-    // Awards `baseScore` (scaled by streak/difficulty/Double Points), and
-    // rolls a chance to drop a pickup at `deathPos` — the common "an enemy
-    // just died" bookkeeping shared by every weapon's kill branch.
-    void OnKill(Vector2 deathPos, int baseScore) {
+    // Awards `baseScore` (scaled by streak/difficulty/Double Points), rolls a
+    // chance to drop a pickup, and queues split children if applicable — the
+    // common "an enemy just died" bookkeeping shared by every weapon's kill
+    // branch.
+    void OnKill(const Enemy& killed, int baseScore) {
+        Vector2 deathPos = killed.position;
         score_ += combo_.RegisterKill(baseScore);
         pickups_.RollAndSpawnDrop(deathPos);
+        if (killed.SplitsOnDeath()) {
+            Vector2 offset = mathutil::FromAngle(mathutil::RandomFloat(0.0f, 2.0f * PI), cfg::kPickleSplitterSplitOffset);
+            levels_.QueueSpawn(EnemyType::PickleSplitter, Vector2Add(deathPos, offset), true);
+            levels_.QueueSpawn(EnemyType::PickleSplitter, Vector2Subtract(deathPos, offset), true);
+        }
         audio_.Play(Sfx::EnemyDeath, 0.8f, 0.15f);
     }
 
@@ -157,6 +164,93 @@ private:
     bool wantsBlock_ = false; // input state, set every frame by Game
     bool blocking_ = false;   // actual state after guard-meter gating
     float regenDelayTimer_ = 0.0f;
+    float bashCooldownTimer_ = 0.0f;
+    float bashSwingTimer_ = 0.0f;
+    float bashAngle_ = 0.0f;
+};
+
+// --- Skewer Spear: melee thrust, long range/narrow arc, alt to Sword ------
+class SkewerSpear : public Weapon {
+public:
+    SkewerSpear(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
+                ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+
+    void Update(float dt) override;
+    void Attack(Vector2 origin, Vector2 dir) override;
+    void Draw(Vector2 origin) const override;
+    void DrawUI(Vector2 screenPos) const override;
+    bool CanAttack() const override { return cooldownTimer_ <= 0.0f; }
+    void RefillAndResetCooldown() override { cooldownTimer_ = 0.0f; }
+
+private:
+    float cooldownTimer_ = 0.0f;
+    float thrustTimer_ = 0.0f;
+    float thrustAngle_ = 0.0f;
+};
+
+// --- Salsa Scattershot: semi-auto pellet fan, alt to Blaster --------------
+class SalsaScattershot : public Weapon {
+public:
+    SalsaScattershot(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
+                      ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+
+    void Update(float dt) override;
+    void Attack(Vector2 origin, Vector2 dir) override;
+    void Draw(Vector2 origin) const override;
+    void DrawUI(Vector2 screenPos) const override;
+    bool CanAttack() const override { return cooldownTimer_ <= 0.0f && ammo_ > 0; }
+    void RefillAndResetCooldown() override { cooldownTimer_ = 0.0f; reloadTimer_ = 0.0f; ammo_ = cfg::kScattershotMagazine; }
+
+private:
+    float cooldownTimer_ = 0.0f;
+    float reloadTimer_ = 0.0f;
+    int ammo_ = cfg::kScattershotMagazine;
+    float muzzleFlashTimer_ = 0.0f;
+    float lastAngle_ = 0.0f;
+};
+
+// --- Habanero Handful: fan of 3 mini bombs, alt to Bomb --------------------
+// Detonations are resolved by BurritoBomb::Update, which unconditionally
+// drains ProjectileManager::PopExplosions() every frame (see Weapon.cpp) —
+// this weapon must NOT also pop explosions, or the two would race for the
+// same shared queue. Its own Update only ticks the throw cooldown.
+class HabaneroHandful : public Weapon {
+public:
+    HabaneroHandful(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
+                     ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+
+    void Update(float dt) override;
+    void Attack(Vector2 origin, Vector2 dir) override;
+    void Draw(Vector2 origin) const override;
+    void DrawUI(Vector2 screenPos) const override;
+    bool CanAttack() const override { return cooldownTimer_ <= 0.0f; }
+    void RefillAndResetCooldown() override { cooldownTimer_ = 0.0f; }
+
+private:
+    float cooldownTimer_ = 0.0f;
+};
+
+// --- Fondue Fork: full-negation parry (no guard meter) + bash, alt to Shield
+class FondueFork : public Weapon {
+public:
+    FondueFork(ProjectileManager& projectiles, LevelManager& levels, ParticleSystem& particles,
+               ScreenShake& shake, Player& player, ComboTracker& combo, PickupManager& pickups, PowerUpState& powerUps, AudioManager& audio, int& score);
+
+    void Update(float dt) override;
+    void Attack(Vector2 origin, Vector2 dir) override; // fork bash
+    void Draw(Vector2 origin) const override;
+    void DrawUI(Vector2 screenPos) const override;
+    bool CanAttack() const override { return bashCooldownTimer_ <= 0.0f; }
+    void RefillAndResetCooldown() override { bashCooldownTimer_ = 0.0f; parryCooldownTimer_ = 0.0f; }
+
+    void SetBlocking(bool held) override { wantsParry_ = held; }
+    bool IsBlocking() const override { return parrying_; }
+
+private:
+    bool wantsParry_ = false;        // input state, set every frame by Game
+    bool parrying_ = false;          // true only during the brief negation window
+    float parryTimer_ = 0.0f;        // counts down the active parry window
+    float parryCooldownTimer_ = 0.0f;
     float bashCooldownTimer_ = 0.0f;
     float bashSwingTimer_ = 0.0f;
     float bashAngle_ = 0.0f;

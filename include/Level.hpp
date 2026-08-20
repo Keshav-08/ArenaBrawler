@@ -10,10 +10,11 @@
 // MakeEnemy) so adding a level later is just adding another case there.
 struct Level {
     std::string name;
+    Biome biome = Biome::Grass;
     std::vector<Room> rooms;
 };
 
-constexpr int kLevelCount = 2;
+constexpr int kLevelCount = 4;
 
 // Builds level `index` (0-based) with world-space room bounds already laid
 // out sequentially along X, starting at x = 0.
